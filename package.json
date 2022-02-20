@@ -8,7 +8,13 @@
     "prepare": "husky install",
     "lint-staged": "lint-staged"
   },
+  "dependencies": {
+    "bn.js": "^5.2.0",
+    "bs58": "^5.0.0"
+  },
   "devDependencies": {
+    "@blockworks-foundation/mango-client": "^3.3.16",
+    "@solana/web3.js": "^1.35.0",
     "@typescript-eslint/eslint-plugin": "^5.12.0",
     "@typescript-eslint/parser": "^5.12.0",
     "eslint": "^8.9.0",
@@ -20,5 +26,9 @@
     "lint-staged": "^12.3.4",
     "prettier": "^2.5.1",
     "typescript": "^4.5.5"
+  },
+  "peerDependencies": {
+    "@blockworks-foundation/mango-client": "^3.3.16",
+    "@solana/web3.js": "^1.35.0"
   }
 }
