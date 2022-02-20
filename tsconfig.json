@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "outDir": "build",
+    "rootDir": "src",
+    "baseUrl": "src",
+    "declaration": true,
+    "sourceMap": true,
+    "target": "ES6"
+  }
+}
