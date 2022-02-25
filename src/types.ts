@@ -64,7 +64,11 @@ export interface Signal {
   off<E extends keyof SignalEventMap, P extends SignalEventMap[E]>(event: E, listener: SignalEventListener<E, P>): void
 }
 
-export interface Bot {
-  start(): void
-  stop(): void
+export abstract class Bot {
+  constructor(public signal: Signal, public market: Market) {}
+  abstract start(): void
+  abstract stop(): void
 }
+
+// bot -> singal -> market
+//     -----------> market
