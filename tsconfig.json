@@ -6,6 +6,7 @@
     "baseUrl": "src",
     "declaration": true,
     "sourceMap": true,
-    "target": "ES6"
+    "target": "ES6",
+    "moduleResolution": "node"
   }
 }
