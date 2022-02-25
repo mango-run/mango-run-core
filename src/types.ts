@@ -34,10 +34,11 @@ export interface Orderbook {
 }
 
 export interface Market {
-  receipts(type: ReceiptType): Promise<Receipt[]>
   orderbook(): Promise<Orderbook>
+  receipts(type: ReceiptType): Promise<Receipt[]>
   placeOrder(order: Order): Promise<Receipt>
   cancelOrder(id: string): Promise<Receipt>
+  cancelAllOrders(): Promise<Receipt[]>
 }
 
 export interface PlaceOrderEvent {
@@ -48,26 +49,27 @@ export interface CancelOrderEvent {
   id: string
 }
 
-// eslint-disable-next-line
-export interface CancelAllOrderEvent {}
-
 type SignalEventMap = {
   place_order_event: PlaceOrderEvent
   cancel_order_event: CancelOrderEvent
-  cancel_all_order_event: CancelAllOrderEvent
+  cancel_all_orders_event: void
+  start: void
+  stop: void
 }
 
-type SignalEventListener<E extends keyof SignalEventMap, P extends SignalEventMap[E]> = (payload: P) => void
+export type SignalEvent = keyof SignalEventMap
+
+export type SignalEventPayload<E extends SignalEvent> = SignalEventMap[E]
+
+export type SignalEventListener<E extends SignalEvent> = (payload: SignalEventPayload<E>) => void
 
 export interface Signal {
-  on<E extends keyof SignalEventMap, P extends SignalEventMap[E]>(event: E, listener: SignalEventListener<E, P>): void
-  off<E extends keyof SignalEventMap, P extends SignalEventMap[E]>(event: E, listener: SignalEventListener<E, P>): void
-}
-
-export abstract class Bot {
-  constructor(public signal: Signal, public market: Market) {}
-  abstract start(): void
-  abstract stop(): void
+  on<E extends SignalEvent>(event: E, listener: SignalEventListener<E>): void
+  off<E extends SignalEvent>(event: E, listener: SignalEventListener<E>): void
+  // return a promise which resolved once first tick done
+  start(): Promise<void>
+  // return a promise which resolved once last tick done
+  stop(): Promise<void>
 }
 
 // bot -> singal -> market
