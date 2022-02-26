@@ -1,23 +1,24 @@
 import { EventEmitter } from 'events'
-import { Signal, SignalEvent, SignalEventListener, SignalEventPayload, Market } from 'types'
+import { ConsoleLogger } from 'logger/console-logger'
+import { Logger, Signal, SignalEvent, SignalEventListener, SignalEventPayload } from 'types'
 
-export interface GridSignalConfigs {
-  martket: Market
+export interface BaseSignalConfigs {
   interval?: number
+  logger?: Logger
 }
 
-export class GridSignal implements Signal {
+export abstract class BaseSignal<Config extends BaseSignalConfigs = BaseSignalConfigs> implements Signal {
   eventEmitter = new EventEmitter()
-
-  config: Required<GridSignalConfigs>
 
   isRunning = false
 
-  constructor(config: GridSignalConfigs) {
-    this.config = {
-      ...config,
-      interval: config.interval || 1000,
-    }
+  logger: Logger
+
+  interval: number
+
+  constructor(public config: Config) {
+    this.interval = config.interval || 1000
+    this.logger = config.logger || new ConsoleLogger()
   }
 
   /**
@@ -39,7 +40,7 @@ export class GridSignal implements Signal {
   async start() {
     this.isRunning = true
     this.emit('start', void 0)
-    await this.tick()
+    await this.run()
   }
 
   async stop() {
@@ -47,13 +48,15 @@ export class GridSignal implements Signal {
     return new Promise<void>(resolve => this.on('stop', resolve))
   }
 
-  async tick() {
-    // @todo implement signal logic
+  async run() {
+    await this.tick()
 
     if (this.isRunning) {
-      setTimeout(() => this.tick(), this.config.interval)
+      setTimeout(() => this.run(), this.interval)
     } else {
       this.emit('stop', void 0)
     }
   }
+
+  abstract tick(): Promise<void>
 }

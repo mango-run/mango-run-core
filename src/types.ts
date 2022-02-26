@@ -9,11 +9,16 @@ export enum OrderType {
   PostOnly,
 }
 
-export interface Order {
+export interface OrderDraft {
   price: number
   size: number
   side: OrderSide
   type?: OrderType
+}
+
+export interface Order {
+  price: number
+  size: number
 }
 
 export enum ReceiptType {
@@ -24,25 +29,27 @@ export enum ReceiptType {
 export interface Receipt {
   id: string
   type: ReceiptType
-  order: Order
+  order: OrderDraft
 }
 
 export interface Orderbook {
-  asks: [price: number, size: number][]
-  bids: [price: number, size: number][]
+  asks: Order[]
+  bids: Order[]
   ts: number
 }
 
 export interface Market {
+  bestAsk(): Promise<Order | undefined>
+  bestBid(): Promise<Order | undefined>
   orderbook(): Promise<Orderbook>
   receipts(type: ReceiptType): Promise<Receipt[]>
-  placeOrder(order: Order): Promise<Receipt>
+  placeOrder(order: OrderDraft): Promise<Receipt>
   cancelOrder(id: string): Promise<Receipt>
   cancelAllOrders(): Promise<Receipt[]>
 }
 
 export interface PlaceOrderEvent {
-  order: Order
+  order: OrderDraft
 }
 
 export interface CancelOrderEvent {
@@ -74,3 +81,10 @@ export interface Signal {
 
 // bot -> singal -> market
 //     -----------> market
+
+export interface Logger {
+  debug(...msg: string[]): void
+  info(...msg: string[]): void
+  warn(...msg: string[]): void
+  error(...msg: string[]): void
+}
