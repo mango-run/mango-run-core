@@ -1,6 +1,6 @@
 import { floor } from 'lodash'
 import { BaseSignal, BaseSignalConfigs } from 'signal/base-signal'
-import { Market, OrderDraft, OrderSide, ReceiptType } from 'types'
+import { Market, OrderDraft, OrderSide, ReceiptStatus } from 'types'
 import { average, orderDraftKey, isBetween } from 'utils'
 
 export interface GridSignalConfigs extends BaseSignalConfigs {
@@ -34,7 +34,7 @@ export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> {
     const [bestAsk, bestBid, receipts] = await Promise.all([
       market.bestAsk(),
       market.bestBid(),
-      market.receipts(ReceiptType.Placed),
+      market.receipts(ReceiptStatus.Placed),
     ])
 
     if (!bestAsk || !bestBid) {
@@ -56,6 +56,7 @@ export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> {
     if (stopLossPrice && currentPrice <= stopLossPrice) {
       this.logger.debug(`meet stop loss price (${stopLossPrice}), stop signal`)
       this.emit('cancel_all_orders_event', void 0)
+      this.emit('clear_all_position', void 0)
       this.stop()
       return
     }
@@ -63,6 +64,7 @@ export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> {
     if (takeProfitPrice && currentPrice >= takeProfitPrice) {
       this.logger.debug(`meet take profit price (${takeProfitPrice}), stop signal`)
       this.emit('cancel_all_orders_event', void 0)
+      this.emit('clear_all_position', void 0)
       this.stop()
       return
     }

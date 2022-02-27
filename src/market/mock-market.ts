@@ -1,6 +1,7 @@
 import { Market } from 'types'
 
 export class MockMarket implements Market {
+  balance = jest.fn()
   bestAsk = jest.fn()
   bestBid = jest.fn()
   orderbook = jest.fn()

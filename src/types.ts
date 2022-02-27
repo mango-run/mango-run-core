@@ -21,14 +21,15 @@ export interface Order {
   size: number
 }
 
-export enum ReceiptType {
+export enum ReceiptStatus {
   Placed,
   Canceled,
+  Fulfilled,
 }
 
 export interface Receipt {
   id: string
-  type: ReceiptType
+  status: ReceiptStatus
   order: OrderDraft
 }
 
@@ -38,11 +39,17 @@ export interface Orderbook {
   ts: number
 }
 
+export interface Balance {
+  base: number
+  quote: number
+}
+
 export interface Market {
+  balance(): Promise<Balance>
   bestAsk(): Promise<Order | undefined>
   bestBid(): Promise<Order | undefined>
   orderbook(depth: number): Promise<Orderbook>
-  receipts(type: ReceiptType): Promise<Receipt[]>
+  receipts(type: ReceiptStatus): Promise<Receipt[]>
   placeOrder(order: OrderDraft): Promise<Receipt>
   cancelOrder(id: string): Promise<Receipt>
   cancelAllOrders(): Promise<Receipt[]>
@@ -60,6 +67,7 @@ type SignalEventMap = {
   place_order_event: PlaceOrderEvent
   cancel_order_event: CancelOrderEvent
   cancel_all_orders_event: void
+  clear_all_position: void
   start: void
   stop: void
 }

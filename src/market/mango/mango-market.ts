@@ -6,13 +6,14 @@ import {
   MangoAccount,
   MangoClient,
   MangoGroup,
+  MarketConfig,
   MarketKind,
   PerpMarket,
   PerpOrder,
 } from '@blockworks-foundation/mango-client'
 import { Account, Connection, Keypair } from '@solana/web3.js'
-import { Market, Order, Orderbook, OrderDraft, OrderSide, Receipt } from 'types'
-import { ReceiptType } from 'types'
+import { Balance, Market, Order, Orderbook, OrderDraft, OrderSide, Receipt } from 'types'
+import { ReceiptStatus } from 'types'
 
 const connection = new Connection('https://mercurial.rpcpool.com/', 'confirmed')
 
@@ -36,7 +37,7 @@ export const loadMangoMarket = async (configs: MangoMarketConfigs): Promise<Mang
     marketConfig.baseDecimals,
     marketConfig.quoteDecimals,
   )
-  return new MangoMarket(configs, client, mangoGroup, market)
+  return new MangoMarket(configs, client, mangoGroup, market, marketConfig)
 }
 
 export class MangoMarket implements Market {
@@ -50,6 +51,7 @@ export class MangoMarket implements Market {
     private mangoClient: MangoClient,
     private mangoGroup: MangoGroup,
     private market: PerpMarket,
+    private marketConfig: MarketConfig,
   ) {
     this.owner = new Account(this.configs.keypair.secretKey)
     this.receiptList = []
@@ -65,6 +67,15 @@ export class MangoMarket implements Market {
   // eslint-disable-next-line
   setSubAccountIndex(account: MangoAccount) {
     this.mangoAccount = account
+  }
+
+  async balance(): Promise<Balance> {
+    if (!this.mangoAccount) return { base: 0, quote: 0 }
+    /**
+     * @todo implement get balance
+     */
+    const base = this.mangoAccount.getPerpPositionUi(this.marketConfig.marketIndex, this.market)
+    return { base, quote: 0 }
   }
 
   async bestAsk(): Promise<Order | undefined> {
@@ -115,8 +126,8 @@ export class MangoMarket implements Market {
     }
   }
 
-  async receipts(type: ReceiptType): Promise<Receipt[]> {
-    return this.receiptList.filter(r => r.type === type)
+  async receipts(status: ReceiptStatus): Promise<Receipt[]> {
+    return this.receiptList.filter(r => r.status === status)
   }
 
   async placeOrder(order: OrderDraft): Promise<Receipt> {
@@ -152,7 +163,7 @@ export class MangoMarket implements Market {
     const id = matches[1]
     const receipt = {
       id,
-      type: ReceiptType.Placed,
+      status: ReceiptStatus.Placed,
       order: order,
     }
     this.receiptList.push(receipt)
@@ -184,7 +195,7 @@ export class MangoMarket implements Market {
 
     const receipt = {
       id: id,
-      type: ReceiptType.Canceled,
+      status: ReceiptStatus.Canceled,
       order: {
         price: mangoOrder.price,
         size: mangoOrder.size,
@@ -213,7 +224,7 @@ export class MangoMarket implements Market {
     const receipts: Receipt[] = mangoOrders.map(od => {
       const r: Receipt = {
         id: od.orderId.toString() as string,
-        type: ReceiptType.Canceled,
+        status: ReceiptStatus.Canceled,
         order: {
           price: od.price,
           size: od.size,

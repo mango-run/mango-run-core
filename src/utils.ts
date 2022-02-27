@@ -17,3 +17,7 @@ export function orderDraftKey(order: OrderDraft) {
 export function order(v: Order) {
   return v
 }
+
+export function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}

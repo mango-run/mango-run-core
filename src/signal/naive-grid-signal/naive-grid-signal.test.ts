@@ -64,7 +64,9 @@ describe('grid-signal', () => {
       expect(signal.hasStarted).toBe(false)
 
       const onCancelAllOrders = jest.fn()
+      const onClearAllPosition = jest.fn()
       signal.on('cancel_all_orders_event', onCancelAllOrders)
+      signal.on('clear_all_position', onClearAllPosition)
       market.bestAsk.mockResolvedValueOnce(order({ price: 5.5, size: 1 }))
       market.bestBid.mockResolvedValueOnce(order({ price: 4.5, size: 1 }))
 
@@ -72,6 +74,7 @@ describe('grid-signal', () => {
 
       expect(signal.hasStarted).toBe(true)
       expect(onCancelAllOrders).toBeCalledTimes(1)
+      expect(onClearAllPosition).toBeCalledTimes(1)
     })
 
     it('should cancel all orders when price higher or equal to take profit price', async () => {
@@ -87,7 +90,9 @@ describe('grid-signal', () => {
       expect(signal.hasStarted).toBe(false)
 
       const onCancelAllOrders = jest.fn()
+      const onClearAllPosition = jest.fn()
       signal.on('cancel_all_orders_event', onCancelAllOrders)
+      signal.on('clear_all_position', onClearAllPosition)
       market.bestAsk.mockResolvedValueOnce(order({ price: 25.5, size: 1 }))
       market.bestBid.mockResolvedValueOnce(order({ price: 24.5, size: 1 }))
 
@@ -95,6 +100,7 @@ describe('grid-signal', () => {
 
       expect(signal.hasStarted).toBe(true)
       expect(onCancelAllOrders).toBeCalledTimes(1)
+      expect(onClearAllPosition).toBeCalledTimes(1)
     })
   })
 })
