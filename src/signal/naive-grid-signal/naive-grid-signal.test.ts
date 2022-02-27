@@ -1,6 +1,7 @@
 import { NaiveGridSignal } from './naive-grid-signal'
 import { MockMarket } from 'market/mock-market'
 import { order } from 'utils'
+import { NullLogger } from 'logger/null-logger'
 
 describe('grid-signal', () => {
   let market = new MockMarket()
@@ -11,14 +12,17 @@ describe('grid-signal', () => {
 
   describe('triggers', () => {
     it('should not start when price higher than start price', async () => {
-      const signal = new NaiveGridSignal({
-        market,
-        priceLowerCap: 10,
-        priceUpperCap: 20,
-        gridCount: 10,
-        orderSize: 1,
-        startPrice: 15,
-      })
+      const signal = new NaiveGridSignal(
+        {
+          market,
+          priceLowerCap: 10,
+          priceUpperCap: 20,
+          gridCount: 10,
+          orderSize: 1,
+          startPrice: 15,
+        },
+        new NullLogger(),
+      )
 
       expect(signal.hasStarted).toBe(false)
 
@@ -31,14 +35,17 @@ describe('grid-signal', () => {
     })
 
     it('should start when price less or equal to start price', async () => {
-      const signal = new NaiveGridSignal({
-        market,
-        priceLowerCap: 10,
-        priceUpperCap: 20,
-        gridCount: 10,
-        orderSize: 1,
-        startPrice: 15,
-      })
+      const signal = new NaiveGridSignal(
+        {
+          market,
+          priceLowerCap: 10,
+          priceUpperCap: 20,
+          gridCount: 10,
+          orderSize: 1,
+          startPrice: 15,
+        },
+        new NullLogger(),
+      )
 
       expect(signal.hasStarted).toBe(false)
 
@@ -52,14 +59,17 @@ describe('grid-signal', () => {
     })
 
     it('should cancel all orders when price less or equal to stop loss price', async () => {
-      const signal = new NaiveGridSignal({
-        market,
-        priceLowerCap: 10,
-        priceUpperCap: 20,
-        gridCount: 10,
-        orderSize: 1,
-        stopLossPrice: 5,
-      })
+      const signal = new NaiveGridSignal(
+        {
+          market,
+          priceLowerCap: 10,
+          priceUpperCap: 20,
+          gridCount: 10,
+          orderSize: 1,
+          stopLossPrice: 5,
+        },
+        new NullLogger(),
+      )
 
       expect(signal.hasStarted).toBe(false)
 
@@ -78,14 +88,17 @@ describe('grid-signal', () => {
     })
 
     it('should cancel all orders when price higher or equal to take profit price', async () => {
-      const signal = new NaiveGridSignal({
-        market,
-        priceLowerCap: 10,
-        priceUpperCap: 20,
-        gridCount: 10,
-        orderSize: 1,
-        takeProfitPrice: 25,
-      })
+      const signal = new NaiveGridSignal(
+        {
+          market,
+          priceLowerCap: 10,
+          priceUpperCap: 20,
+          gridCount: 10,
+          orderSize: 1,
+          takeProfitPrice: 25,
+        },
+        new NullLogger(),
+      )
 
       expect(signal.hasStarted).toBe(false)
 

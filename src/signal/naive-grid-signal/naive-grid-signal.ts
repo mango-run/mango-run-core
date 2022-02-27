@@ -1,6 +1,6 @@
 import { floor } from 'lodash'
 import { BaseSignal, BaseSignalConfigs } from 'signal/base-signal'
-import { Market, OrderDraft, OrderSide, ReceiptStatus } from 'types'
+import { Logger, Market, OrderDraft, OrderSide, ReceiptStatus } from 'types'
 import { average, orderDraftKey, isBetween } from 'utils'
 
 export interface GridSignalConfigs extends BaseSignalConfigs {
@@ -23,8 +23,8 @@ export interface GridSignalConfigs extends BaseSignalConfigs {
 export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> {
   hasStarted = false
 
-  constructor(config: GridSignalConfigs) {
-    super(config)
+  constructor(config: GridSignalConfigs, logger: Logger) {
+    super(config, logger)
   }
 
   async tick() {

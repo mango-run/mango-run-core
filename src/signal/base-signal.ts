@@ -4,7 +4,6 @@ import { Logger, Signal, SignalEvent, SignalEventListener, SignalEventPayload } 
 
 export interface BaseSignalConfigs {
   interval?: number
-  logger?: Logger
 }
 
 export abstract class BaseSignal<Config extends BaseSignalConfigs = BaseSignalConfigs> implements Signal {
@@ -16,9 +15,9 @@ export abstract class BaseSignal<Config extends BaseSignalConfigs = BaseSignalCo
 
   interval: number
 
-  constructor(public config: Config) {
+  constructor(public config: Config, logger: Logger) {
     this.interval = config.interval || 1000
-    this.logger = config.logger || new ConsoleLogger()
+    this.logger = logger.create('signal')
   }
 
   /**

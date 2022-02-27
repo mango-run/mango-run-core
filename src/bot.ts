@@ -6,7 +6,11 @@ export class Bot {
   cancelAllOrdersHandler: SignalEventListener<'cancel_all_orders_event'> = () => this.market.cancelAllOrders()
   clearAllPositionHandler: SignalEventListener<'clear_all_position'> = () => this.clearAllPosition()
 
-  constructor(protected market: Market, protected signal: Signal, protected logger: Logger) {}
+  protected logger: Logger
+
+  constructor(protected market: Market, protected signal: Signal, logger: Logger) {
+    this.logger = logger.create('bot')
+  }
 
   async start() {
     this.signal.on('place_order_event', this.placeOrderHandler)
