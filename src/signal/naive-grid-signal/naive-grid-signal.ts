@@ -10,6 +10,10 @@ export interface GridSignalConfigs extends BaseSignalConfigs {
   // lowest acceptable price, bot will not place order when price lower than
   priceLowerCap: number
   gridCount: number
+  /**
+   * @default 10
+   */
+  gridActiveRange?: number
   // size of every placed order
   orderSize: number
   // signal will start to emit after price lower or equal to start price
@@ -28,8 +32,17 @@ export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> {
   }
 
   async tick() {
-    const { market, priceLowerCap, priceUpperCap, gridCount, orderSize, startPrice, stopLossPrice, takeProfitPrice } =
-      this.config
+    const {
+      market,
+      priceLowerCap,
+      priceUpperCap,
+      gridCount,
+      gridActiveRange = 10,
+      orderSize,
+      startPrice,
+      stopLossPrice,
+      takeProfitPrice,
+    } = this.config
 
     const [bestAsk, bestBid, receipts] = await Promise.all([
       market.bestAsk(),
@@ -81,9 +94,9 @@ export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> {
 
       let draft: OrderDraft | undefined
 
-      if (currentPrice > gridPrice && isBetween(priceDistance, pace, pace * 10)) {
+      if (currentPrice > gridPrice && isBetween(priceDistance, pace, pace * gridActiveRange)) {
         draft = { side: OrderSide.Buy, size: orderSize, price: floor(gridPrice, 2) }
-      } else if (gridPrice > currentPrice && isBetween(priceDistance, pace, pace * 10)) {
+      } else if (gridPrice > currentPrice && isBetween(priceDistance, pace, pace * gridActiveRange)) {
         draft = { side: OrderSide.Sell, size: orderSize, price: floor(gridPrice, 2) }
       }
 
@@ -95,10 +108,8 @@ export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> {
     for (const receipt of receipts) {
       const priceDistance = Math.abs(receipt.order.price - currentPrice)
 
-      /**
-       * @todo do we have to make `pace * 20` as arguments?
-       */
-      if (priceDistance > pace * 20) {
+      // cancel all orders which are beyond over 2 times of grid active range
+      if (priceDistance > pace * 2 * gridActiveRange) {
         // cancel order which has be out of boundary
         cancelOrders.push(receipt.id)
       } else {
