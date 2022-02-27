@@ -41,7 +41,7 @@ export interface Orderbook {
 export interface Market {
   bestAsk(): Promise<Order | undefined>
   bestBid(): Promise<Order | undefined>
-  orderbook(): Promise<Orderbook>
+  orderbook(depth: number): Promise<Orderbook>
   receipts(type: ReceiptType): Promise<Receipt[]>
   placeOrder(order: OrderDraft): Promise<Receipt>
   cancelOrder(id: string): Promise<Receipt>

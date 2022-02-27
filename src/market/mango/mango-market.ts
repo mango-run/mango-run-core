@@ -39,9 +39,6 @@ export const loadMangoMarket = async (configs: MangoMarketConfigs): Promise<Mang
   return new MangoMarket(configs, client, mangoGroup, market)
 }
 
-// @todo implement Market interface
-// eslint-disable-next-line
-// @ts-ignore
 export class MangoMarket implements Market {
   mangoAccount: MangoAccount | undefined
   owner: Account
@@ -94,9 +91,7 @@ export class MangoMarket implements Market {
     }
   }
 
-  async orderbook(): Promise<Orderbook> {
-    // grab from mango-ui. don't what does 40 mean...
-    const depth = 40
+  async orderbook(depth: number): Promise<Orderbook> {
     const [_asks, _bids] = await Promise.all([this.market.loadAsks(connection), this.market.loadBids(connection)])
 
     const asks: Order[] = _asks.getL2(depth).map(([price, size]) => {
