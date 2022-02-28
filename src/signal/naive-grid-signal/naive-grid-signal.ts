@@ -18,9 +18,9 @@ export interface GridSignalConfigs extends BaseSignalConfigs {
   orderSize: number
   // signal will start to emit after price lower or equal to start price
   startPrice?: number
-  // cancel all orders and stop signal after price lowner or equal to stop loss price
+  // cancel all orders, clear all position and stop signal after price lowner or equal to stop loss price
   stopLossPrice?: number
-  // cancel all orders and stop signal after price higher or equal to take profit price
+  // cancel all orders, clear all position and stop signal after price higher or equal to take profit price
   takeProfitPrice?: number
 }
 
