@@ -1,10 +1,29 @@
-import { Signal, Market, SignalEventListener, OrderType, OrderSide, Logger } from 'types'
+import { Signal, Market, SignalEventListener, OrderType, OrderSide, Logger, Callback } from 'types'
+import { measureTime } from 'utils'
+
+interface CallbackWithDetail {
+  name: string
+  callback: Callback
+}
 
 export class Bot {
-  placeOrderHandler: SignalEventListener<'place_order_event'> = ({ order }) => this.market.placeOrder(order)
-  cancelOrderHandler: SignalEventListener<'cancel_order_event'> = ({ id }) => this.market.cancelOrder(id)
-  cancelAllOrdersHandler: SignalEventListener<'cancel_all_orders_event'> = () => this.market.cancelAllOrders()
-  clearAllPositionHandler: SignalEventListener<'clear_all_position'> = () => this.clearAllPosition()
+  blockCallbacks: CallbackWithDetail[] = []
+
+  placeOrderHandler: SignalEventListener<'place_order_event'> = ({ order }) => {
+    this.blockSignal(() => this.market.placeOrder(order))
+  }
+
+  cancelOrderHandler: SignalEventListener<'cancel_order_event'> = ({ id }) => {
+    this.blockSignal(() => this.market.cancelOrder(id))
+  }
+
+  cancelAllOrdersHandler: SignalEventListener<'cancel_all_orders_event'> = () => {
+    this.blockSignal(() => this.market.cancelAllOrders())
+  }
+
+  clearAllPositionHandler: SignalEventListener<'clear_all_position'> = () => {
+    this.blockSignal(() => this.clearAllPosition())
+  }
 
   protected logger: Logger
 
@@ -12,10 +31,53 @@ export class Bot {
     this.logger = logger.create('bot')
   }
 
+  blockSignal(callback: Callback, name = 'unknown') {
+    this.blockCallbacks.push({ callback, name })
+
+    if (this.signal.isPaused) return
+
+    this.logger.debug('pause signal for block signal callbacks')
+
+    this.signal.pause().then(isPaused => {
+      if (isPaused) {
+        this.resolveBlockSignalCallbacks()
+      } else {
+        this.logger.debug('pause failed, signal is keep running')
+      }
+    })
+  }
+
+  async resolveBlockSignalCallbacks() {
+    this.logger.debug('start to resolve block signal callbacks')
+
+    const callbacks = [...this.blockCallbacks]
+    this.blockCallbacks = []
+
+    await Promise.all(
+      callbacks.map(async ({ name, callback }) => {
+        const dt = await measureTime(async () => {
+          try {
+            await callback()
+          } catch (error) {
+            this.logger.error(`block signal callback: ${name} failed`, error)
+          }
+        })
+        this.logger.error(`block signal callback: ${name} take ${dt}s`)
+      }),
+    )
+
+    this.logger.debug('block signal callbacks resolved')
+
+    this.logger.debug('resume signal after block signal callbacks resolved')
+
+    if (this.signal.isPaused) await this.signal.resume()
+  }
+
   async start() {
     this.signal.on('place_order_event', this.placeOrderHandler)
     this.signal.on('cancel_order_event', this.cancelOrderHandler)
     this.signal.on('cancel_all_orders_event', this.cancelAllOrdersHandler)
+    this.signal.on('clear_all_position', this.clearAllPositionHandler)
     await this.signal.start()
   }
 
@@ -24,6 +86,7 @@ export class Bot {
     this.signal.off('place_order_event', this.placeOrderHandler)
     this.signal.off('cancel_order_event', this.cancelOrderHandler)
     this.signal.off('cancel_all_orders_event', this.cancelAllOrdersHandler)
+    this.signal.off('clear_all_position', this.clearAllPositionHandler)
   }
 
   async clearAllPosition() {

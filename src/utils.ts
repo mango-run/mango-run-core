@@ -1,4 +1,4 @@
-import { Order, OrderDraft, OrderType } from 'types'
+import { Callback, Order, OrderDraft, OrderType } from 'types'
 
 export function average(...numbers: number[]) {
   if (numbers.length === 0) return 0
@@ -20,4 +20,16 @@ export function order(v: Order) {
 
 export function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+export async function measureTime(callback: Callback) {
+  const start = process.hrtime.bigint()
+  try {
+    await callback()
+  } catch {
+    // eat error
+  }
+  const end = process.hrtime.bigint()
+  const nano = Number(end - start)
+  return nano * 10 ** -9
 }

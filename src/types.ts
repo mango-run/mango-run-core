@@ -1,3 +1,5 @@
+export type Callback<T = unknown> = () => T | Promise<T>
+
 export enum OrderSide {
   Buy,
   Sell,
@@ -71,6 +73,9 @@ type SignalEventMap = {
   clear_all_position: void
   start: void
   stop: void
+  pause: void
+  resume: void
+  tick: void
 }
 
 export type SignalEvent = keyof SignalEventMap
@@ -80,12 +85,19 @@ export type SignalEventPayload<E extends SignalEvent> = SignalEventMap[E]
 export type SignalEventListener<E extends SignalEvent> = (payload: SignalEventPayload<E>) => void
 
 export interface Signal {
+  readonly isRunning: boolean
+  readonly isPaused: boolean
   on<E extends SignalEvent>(event: E, listener: SignalEventListener<E>): void
   off<E extends SignalEvent>(event: E, listener: SignalEventListener<E>): void
+  once<E extends SignalEvent>(event: E, listener: SignalEventListener<E>): void
   // return a promise which resolved once first tick done
-  start(): Promise<void>
+  start(): Promise<boolean>
   // return a promise which resolved once last tick done
-  stop(): Promise<void>
+  stop(): Promise<boolean>
+  // return a promise which resolved once current tick done
+  pause(): Promise<boolean>
+  // return a promise which resolved once next tick done
+  resume(): Promise<boolean>
 }
 
 // bot -> singal -> market
@@ -93,8 +105,8 @@ export interface Signal {
 
 export interface Logger {
   create(namespace: string): Logger
-  debug(...msg: string[]): void
-  info(...msg: string[]): void
-  warn(...msg: string[]): void
-  error(...msg: string[]): void
+  debug(...msg: unknown[]): void
+  info(...msg: unknown[]): void
+  warn(...msg: unknown[]): void
+  error(...msg: unknown[]): void
 }

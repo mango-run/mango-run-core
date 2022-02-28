@@ -1,5 +1,4 @@
 import { EventEmitter } from 'events'
-import { ConsoleLogger } from 'logger/console-logger'
 import { Logger, Signal, SignalEvent, SignalEventListener, SignalEventPayload } from 'types'
 
 export interface BaseSignalConfigs {
@@ -10,6 +9,8 @@ export abstract class BaseSignal<Config extends BaseSignalConfigs = BaseSignalCo
   eventEmitter = new EventEmitter()
 
   isRunning = false
+
+  isPaused = false
 
   logger: Logger
 
@@ -22,7 +23,9 @@ export abstract class BaseSignal<Config extends BaseSignalConfigs = BaseSignalCo
 
   /**
    * @event start emit before first tick started
-   * @event stop emit after last tick ended
+   * @event stop emit before last tick started
+   * @event pause emit before next tick started
+   * @event resume emit before next tick started
    */
   on<E extends SignalEvent>(event: E, listener: SignalEventListener<E>) {
     this.eventEmitter.on(event, listener)
@@ -32,28 +35,54 @@ export abstract class BaseSignal<Config extends BaseSignalConfigs = BaseSignalCo
     this.eventEmitter.off(event, listener)
   }
 
+  once<E extends SignalEvent>(event: E, listener: SignalEventListener<E>) {
+    this.eventEmitter.once(event, listener)
+  }
+
   emit<E extends SignalEvent>(event: E, payload: SignalEventPayload<E>) {
     this.eventEmitter.emit(event, payload)
   }
 
   async start() {
+    if (this.isRunning) return false
     this.isRunning = true
     this.emit('start', void 0)
     await this.run()
+    return true
   }
 
   async stop() {
+    if (!this.isRunning) return false
     this.isRunning = false
-    return new Promise<void>(resolve => this.on('stop', resolve))
+    this.emit('stop', void 0)
+    await new Promise<void>(resolve => this.once('stop', resolve))
+    return true
+  }
+
+  async pause() {
+    if (this.isPaused) return false
+    this.isPaused = true
+    this.emit('pause', void 0)
+    await new Promise<void>(resolve => this.once('tick', resolve))
+    return true
+  }
+
+  async resume() {
+    if (!this.isPaused) return false
+    this.isPaused = false
+    this.emit('resume', void 0)
+    await new Promise<void>(resolve => this.once('tick', resolve))
+    return true
   }
 
   async run() {
-    await this.tick()
+    if (!this.isPaused) {
+      await this.tick()
+      this.emit('tick', void 0)
+    }
 
     if (this.isRunning) {
       setTimeout(() => this.run(), this.interval)
-    } else {
-      this.emit('stop', void 0)
     }
   }
 
