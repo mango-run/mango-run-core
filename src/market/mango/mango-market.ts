@@ -4,6 +4,7 @@ import {
   GroupConfig,
   IDS,
   MangoAccount,
+  MangoCache,
   MangoClient,
   MangoGroup,
   MarketConfig,
@@ -12,7 +13,7 @@ import {
   PerpOrder,
 } from '@blockworks-foundation/mango-client'
 import { Account, Connection, Keypair } from '@solana/web3.js'
-import { Balance, Market, Order, Orderbook, OrderDraft, OrderSide, Receipt } from 'types'
+import { Balance, Logger, Market, Order, Orderbook, OrderDraft, OrderSide, Receipt } from 'types'
 import { ReceiptStatus } from 'types'
 
 const connection = new Connection('https://mercurial.rpcpool.com/', 'confirmed')
@@ -27,7 +28,7 @@ export interface MangoMarketConfigs {
   kind: MarketKind
 }
 
-export const loadMangoMarket = async (configs: MangoMarketConfigs): Promise<MangoMarket> => {
+export const loadMangoMarket = async (configs: MangoMarketConfigs, logger: Logger): Promise<MangoMarket> => {
   const client = new MangoClient(connection, groupConfig.mangoProgramId)
   const mangoGroup = await client.getMangoGroup(groupConfig.publicKey)
   const marketConfig = getMarketByBaseSymbolAndKind(groupConfig, configs.symbol, configs.kind)
@@ -37,24 +38,26 @@ export const loadMangoMarket = async (configs: MangoMarketConfigs): Promise<Mang
     marketConfig.baseDecimals,
     marketConfig.quoteDecimals,
   )
-  return new MangoMarket(configs, client, mangoGroup, market, marketConfig)
+  const mangoCache = await mangoGroup.loadCache(connection)
+  return new MangoMarket(logger, configs, client, mangoGroup, market, marketConfig, mangoCache)
 }
 
 export class MangoMarket implements Market {
   mangoAccount: MangoAccount | undefined
   owner: Account
-  receiptList: Receipt[]
   botClientID = 5566
+  canceledReceipts: Receipt[] = []
 
   constructor(
+    private logger: Logger,
     private configs: MangoMarketConfigs,
     private mangoClient: MangoClient,
     private mangoGroup: MangoGroup,
     private market: PerpMarket,
     private marketConfig: MarketConfig,
+    private mangoCache: MangoCache,
   ) {
     this.owner = new Account(this.configs.keypair.secretKey)
-    this.receiptList = []
   }
 
   // fetch mango sub account list
@@ -64,18 +67,20 @@ export class MangoMarket implements Market {
   }
 
   // set current operated sub account
-  // eslint-disable-next-line
   setSubAccountIndex(account: MangoAccount) {
     this.mangoAccount = account
   }
 
   async balance(): Promise<Balance> {
-    if (!this.mangoAccount) return { base: 0, quote: 0 }
-    /**
-     * @todo implement get balance
-     */
-    const base = this.mangoAccount.getPerpPositionUi(this.marketConfig.marketIndex, this.market)
-    return { base, quote: 0 }
+    if (!this.mangoAccount) {
+      throw new Error('mango account undefined')
+    }
+
+    const perpAccount = this.mangoAccount.perpAccounts[this.marketConfig.marketIndex]
+    const base = this.market.baseLotsToNumber(perpAccount.basePosition)
+    const indexPrice = this.mangoGroup.getPrice(this.marketConfig.marketIndex, this.mangoCache).toNumber()
+    const quote = Math.abs(base * indexPrice)
+    return { base, quote }
   }
 
   async bestAsk(): Promise<Order | undefined> {
@@ -127,7 +132,54 @@ export class MangoMarket implements Market {
   }
 
   async receipts(status: ReceiptStatus): Promise<Receipt[]> {
-    return this.receiptList.filter(r => r.status === status)
+    if (!this.mangoAccount) {
+      return []
+    }
+
+    switch (status) {
+      case ReceiptStatus.Placed: {
+        const orders = await this.market.loadOrdersForAccount(connection, this.mangoAccount)
+        return orders
+          .filter(o => {
+            return o.clientId?.toNumber() === this.botClientID
+          })
+          .map(o => {
+            return {
+              id: o.orderId.toString(),
+              status: ReceiptStatus.Placed,
+              order: {
+                price: o.price,
+                size: o.size,
+                side: o.side === 'buy' ? OrderSide.Buy : OrderSide.Sell,
+              },
+            }
+          })
+      }
+      case ReceiptStatus.Fulfilled: {
+        const fills = await this.market.loadFills(connection)
+        return fills
+          .filter(f => {
+            return f.makerClientOrderId.toNumber() === this.botClientID && f.maker === this.mangoAccount?.publicKey
+          })
+          .map(f => {
+            return {
+              id: f.makerOrderId.toString(),
+              status: ReceiptStatus.Fulfilled,
+              order: {
+                price: f.price,
+                size: f.quantity,
+                side: f.takerSide === 'sell' ? OrderSide.Buy : OrderSide.Sell,
+              },
+            }
+          })
+      }
+      case ReceiptStatus.Canceled:
+        return this.canceledReceipts
+      default:
+        break
+    }
+
+    return []
   }
 
   async placeOrder(order: OrderDraft): Promise<Receipt> {
@@ -144,7 +196,7 @@ export class MangoMarket implements Market {
       order.side === OrderSide.Buy ? 'buy' : 'sell',
       order.price,
       order.size,
-      'postOnly',
+      order.type || 'postOnly',
       this.botClientID, //client id
     )
 
@@ -152,12 +204,22 @@ export class MangoMarket implements Market {
 
     const log = (await connection.getTransaction(tx))?.meta?.logMessages?.join(',')
     if (!log) {
-      throw new Error('can not fetch transaction log')
+      this.logger.debug('failed to fetch transaction log')
+      return {
+        id: '',
+        status: ReceiptStatus.Error,
+        order,
+      }
     }
 
     const matches = log.match(/\sorder_id=([\d\w]+)/)
     if (!matches) {
-      throw new Error('can not parse transaction log')
+      this.logger.debug('failed to parse transaction log')
+      return {
+        id: '',
+        status: ReceiptStatus.Error,
+        order,
+      }
     }
 
     const id = matches[1]
@@ -166,7 +228,6 @@ export class MangoMarket implements Market {
       status: ReceiptStatus.Placed,
       order: order,
     }
-    this.receiptList.push(receipt)
 
     return receipt
   }
@@ -180,7 +241,16 @@ export class MangoMarket implements Market {
     })
 
     if (!mangoOrder) {
-      throw new Error(`can not find order by id: ${id}`)
+      this.logger.debug(`failed to find order by id: ${id}`)
+      return {
+        id: '',
+        status: ReceiptStatus.Error,
+        order: {
+          price: 0,
+          size: 0,
+          side: OrderSide.Buy,
+        },
+      }
     }
 
     const tx = await this.mangoClient.cancelPerpOrder(
@@ -202,7 +272,8 @@ export class MangoMarket implements Market {
         side: mangoOrder.side === 'buy' ? OrderSide.Buy : OrderSide.Sell,
       },
     }
-    this.receiptList.push(receipt)
+
+    this.canceledReceipts.push(receipt)
 
     return receipt
   }

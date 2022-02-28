@@ -4,9 +4,9 @@ export enum OrderSide {
 }
 
 export enum OrderType {
-  Default,
-  IOC,
-  PostOnly,
+  Default = 'limit',
+  IOC = 'ioc',
+  PostOnly = 'postOnly',
 }
 
 export interface OrderDraft {
@@ -25,6 +25,7 @@ export enum ReceiptStatus {
   Placed,
   Canceled,
   Fulfilled,
+  Error,
 }
 
 export interface Receipt {
