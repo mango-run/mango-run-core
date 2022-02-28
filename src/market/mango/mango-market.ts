@@ -57,6 +57,7 @@ export class MangoMarket implements Market {
     private marketConfig: MarketConfig,
     private mangoCache: MangoCache,
   ) {
+    this.logger = logger.create('market')
     this.owner = new Account(this.configs.keypair.secretKey)
   }
 
