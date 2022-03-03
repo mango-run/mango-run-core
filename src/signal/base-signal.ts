@@ -17,7 +17,7 @@ export abstract class BaseSignal<Config extends BaseSignalConfigs = BaseSignalCo
   interval: number
 
   constructor(public config: Config, logger: Logger) {
-    this.interval = config.interval || 1000
+    this.interval = config.interval || 5000
     this.logger = logger.create('signal')
   }
 
