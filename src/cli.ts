@@ -2,7 +2,7 @@ import { Keypair } from '@solana/web3.js'
 import base58 from 'bs58'
 import { Command } from 'commander'
 import { ConsoleLogger } from 'logger/console-logger'
-import { loadMangoMarket, MangoMarketConfigs } from 'market/mango/mango-market'
+import { MangoMarketConfigs, MangoMarket } from 'market/mango/mango-market'
 import { GridSignalConfigs, NaiveGridSignal } from 'signal/naive-grid-signal/naive-grid-signal'
 import { Signal } from 'types'
 import { Bot } from 'bot'
@@ -67,7 +67,7 @@ program
       symbol: args.baseSymbol,
       kind: args.marketKind || 'perp',
     }
-    const market = await loadMangoMarket(marketConfigs, logger)
+    const market = new MangoMarket(marketConfigs, logger)
 
     const mangoAccounts = await market.subAccounts()
     if (!mangoAccounts.length) {

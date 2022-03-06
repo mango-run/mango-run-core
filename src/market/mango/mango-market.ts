@@ -16,30 +16,11 @@ import { Account, Connection, Keypair } from '@solana/web3.js'
 import { Balance, Logger, Market, Order, Orderbook, OrderDraft, OrderSide, Receipt } from 'types'
 import { ReceiptStatus } from 'types'
 
-const connection = new Connection('https://mercurial.rpcpool.com/', 'confirmed')
-
-const config = new Config(IDS)
-const groupConfig = config.getGroup('mainnet', 'mainnet.1') as GroupConfig
-
 export interface MangoMarketConfigs {
   keypair: Keypair
   // ex: sol
   symbol: string
   kind: MarketKind
-}
-
-export const loadMangoMarket = async (configs: MangoMarketConfigs, logger: Logger): Promise<MangoMarket> => {
-  const client = new MangoClient(connection, groupConfig.mangoProgramId)
-  const mangoGroup = await client.getMangoGroup(groupConfig.publicKey)
-  const marketConfig = getMarketByBaseSymbolAndKind(groupConfig, configs.symbol, configs.kind)
-  const market = await mangoGroup.loadPerpMarket(
-    connection,
-    marketConfig.marketIndex,
-    marketConfig.baseDecimals,
-    marketConfig.quoteDecimals,
-  )
-  const mangoCache = await mangoGroup.loadCache(connection)
-  return new MangoMarket(logger, configs, client, mangoGroup, market, marketConfig, mangoCache)
 }
 
 export class MangoMarket implements Market {
@@ -48,17 +29,43 @@ export class MangoMarket implements Market {
   botClientID = 5566
   canceledReceipts: Receipt[] = []
 
-  constructor(
-    private logger: Logger,
-    private configs: MangoMarketConfigs,
-    private mangoClient: MangoClient,
-    private mangoGroup: MangoGroup,
-    private market: PerpMarket,
-    private marketConfig: MarketConfig,
-    private mangoCache: MangoCache,
-  ) {
+  private groupConfig: GroupConfig
+  private connection = new Connection('https://mercurial.rpcpool.com/', 'confirmed')
+  private mangoClient!: MangoClient
+  private mangoGroup!: MangoGroup
+  private mangoCache!: MangoCache
+  private marketConfig!: MarketConfig
+  private market!: PerpMarket
+
+  private hasInitialized = false
+
+  constructor(private configs: MangoMarketConfigs, private logger: Logger) {
+    const groupConfig = new Config(IDS).getGroup('mainnet', 'mainnet.1')
+    if (!groupConfig) throw new Error('not found manago group config')
+    this.groupConfig = groupConfig
+
     this.logger = logger.create('market')
     this.owner = new Account(this.configs.keypair.secretKey)
+  }
+
+  async initialize() {
+    if (this.hasInitialized) return
+    this.hasInitialized = true
+
+    this.mangoClient = new MangoClient(this.connection, this.groupConfig.mangoProgramId)
+    this.mangoGroup = await this.mangoClient.getMangoGroup(this.groupConfig.publicKey)
+    this.mangoCache = await this.mangoGroup.loadCache(this.connection)
+    this.marketConfig = getMarketByBaseSymbolAndKind(this.groupConfig, this.configs.symbol, this.configs.kind)
+    this.market = await this.mangoGroup.loadPerpMarket(
+      this.connection,
+      this.marketConfig.marketIndex,
+      this.marketConfig.baseDecimals,
+      this.marketConfig.quoteDecimals,
+    )
+  }
+
+  async destroy() {
+    this.hasInitialized = false
   }
 
   // fetch mango sub account list
@@ -85,7 +92,7 @@ export class MangoMarket implements Market {
   }
 
   async bestAsk(): Promise<Order | undefined> {
-    const ask = await (await this.market.loadAsks(connection)).getBest()
+    const ask = await (await this.market.loadAsks(this.connection)).getBest()
     if (!ask) {
       return undefined
     }
@@ -97,7 +104,7 @@ export class MangoMarket implements Market {
   }
 
   async bestBid(): Promise<Order | undefined> {
-    const bid = await (await this.market.loadBids(connection)).getBest()
+    const bid = await (await this.market.loadBids(this.connection)).getBest()
     if (!bid) {
       return undefined
     }
@@ -109,7 +116,10 @@ export class MangoMarket implements Market {
   }
 
   async orderbook(depth: number): Promise<Orderbook> {
-    const [_asks, _bids] = await Promise.all([this.market.loadAsks(connection), this.market.loadBids(connection)])
+    const [_asks, _bids] = await Promise.all([
+      this.market.loadAsks(this.connection),
+      this.market.loadBids(this.connection),
+    ])
 
     const asks: Order[] = _asks.getL2(depth).map(([price, size]) => {
       return {
@@ -139,7 +149,7 @@ export class MangoMarket implements Market {
 
     switch (status) {
       case ReceiptStatus.Placed: {
-        const orders = await this.market.loadOrdersForAccount(connection, this.mangoAccount)
+        const orders = await this.market.loadOrdersForAccount(this.connection, this.mangoAccount)
         return orders
           .filter(o => {
             return o.clientId?.toNumber() === this.botClientID
@@ -157,7 +167,7 @@ export class MangoMarket implements Market {
           })
       }
       case ReceiptStatus.Fulfilled: {
-        const fills = await this.market.loadFills(connection)
+        const fills = await this.market.loadFills(this.connection)
         return fills
           .filter(f => {
             return f.makerClientOrderId.toNumber() === this.botClientID && f.maker === this.mangoAccount?.publicKey
@@ -201,9 +211,9 @@ export class MangoMarket implements Market {
       this.botClientID, //client id
     )
 
-    await connection.confirmTransaction(tx, 'confirmed')
+    await this.connection.confirmTransaction(tx, 'confirmed')
 
-    const log = (await connection.getTransaction(tx))?.meta?.logMessages?.join(',')
+    const log = (await this.connection.getTransaction(tx))?.meta?.logMessages?.join(',')
     if (!log) {
       this.logger.debug('failed to fetch transaction log')
       return {
@@ -237,7 +247,7 @@ export class MangoMarket implements Market {
     if (!this.mangoAccount) {
       throw new Error('mango account undefined')
     }
-    const mangoOrder = (await this.market.loadOrdersForAccount(connection, this.mangoAccount)).find(od => {
+    const mangoOrder = (await this.market.loadOrdersForAccount(this.connection, this.mangoAccount)).find(od => {
       od.orderId.toString() === id
     })
 
@@ -262,7 +272,7 @@ export class MangoMarket implements Market {
       mangoOrder,
     )
 
-    await connection.confirmTransaction(tx, 'confirmed')
+    await this.connection.confirmTransaction(tx, 'confirmed')
 
     const receipt = {
       id: id,
@@ -283,7 +293,7 @@ export class MangoMarket implements Market {
     if (!this.mangoAccount) {
       throw new Error('mango account undefined')
     }
-    const mangoOrders = await this.market.loadOrdersForAccount(connection, this.mangoAccount)
+    const mangoOrders = await this.market.loadOrdersForAccount(this.connection, this.mangoAccount)
     return mangoOrders.filter(od => od.clientId?.toNumber() === this.botClientID)
   }
 
@@ -316,7 +326,7 @@ export class MangoMarket implements Market {
 
       for (let index = 0; index < txs.length; index++) {
         const tx = txs[index]
-        await connection.confirmTransaction(tx)
+        await this.connection.confirmTransaction(tx)
       }
 
       mangoOrders = await this.fetchAllOrders()

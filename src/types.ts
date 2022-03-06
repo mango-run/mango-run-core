@@ -47,7 +47,7 @@ export interface Balance {
   quote: number
 }
 
-export interface Market {
+export interface Market extends LifeCycle {
   balance(): Promise<Balance>
   bestAsk(): Promise<Order | undefined>
   bestBid(): Promise<Order | undefined>
@@ -84,7 +84,7 @@ export type SignalEventPayload<E extends SignalEvent> = SignalEventMap[E]
 
 export type SignalEventListener<E extends SignalEvent> = (payload: SignalEventPayload<E>) => void
 
-export interface Signal {
+export interface Signal extends LifeCycle {
   readonly isRunning: boolean
   readonly isPaused: boolean
   on<E extends SignalEvent>(event: E, listener: SignalEventListener<E>): void
@@ -109,4 +109,9 @@ export interface Logger {
   info(...msg: unknown[]): void
   warn(...msg: unknown[]): void
   error(...msg: unknown[]): void
+}
+
+export interface LifeCycle {
+  initialize?(): Promise<void>
+  destroy?(): Promise<void>
 }

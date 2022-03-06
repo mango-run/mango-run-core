@@ -1,4 +1,4 @@
-import { Callback, Order, OrderDraft, OrderType } from 'types'
+import { Callback, LifeCycle, Order, OrderDraft, OrderType } from 'types'
 
 export function average(...numbers: number[]) {
   if (numbers.length === 0) return 0
@@ -32,4 +32,14 @@ export async function measureTime(callback: Callback) {
   const end = process.hrtime.bigint()
   const nano = Number(end - start)
   return nano * 10 ** -9
+}
+
+export async function doInitialize(lifeCycle: LifeCycle) {
+  if (!lifeCycle.initialize) return
+  await lifeCycle.initialize()
+}
+
+export async function doDestroy(lifeCycle: LifeCycle) {
+  if (!lifeCycle.destroy) return
+  await lifeCycle.destroy()
 }
