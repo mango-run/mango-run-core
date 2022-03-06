@@ -1,7 +1,7 @@
+import { NullLogger } from '../../logger/null-logger'
+import { MockMarket } from '../../market/mock-market'
+import { order } from '../../utils'
 import { NaiveGridSignal } from './naive-grid-signal'
-import { MockMarket } from 'market/mock-market'
-import { order } from 'utils'
-import { NullLogger } from 'logger/null-logger'
 
 describe('grid-signal', () => {
   let market = new MockMarket()

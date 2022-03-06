@@ -13,8 +13,7 @@ import {
   PerpOrder,
 } from '@blockworks-foundation/mango-client'
 import { Account, Connection, Keypair } from '@solana/web3.js'
-import { Balance, Logger, Market, Order, Orderbook, OrderDraft, OrderSide, Receipt } from 'types'
-import { ReceiptStatus } from 'types'
+import { Balance, Logger, Market, Order, Orderbook, OrderDraft, OrderSide, Receipt, ReceiptStatus } from '../../types'
 
 export interface MangoMarketConfigs {
   keypair: Keypair

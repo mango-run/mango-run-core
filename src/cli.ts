@@ -1,11 +1,11 @@
 import { Keypair } from '@solana/web3.js'
 import base58 from 'bs58'
 import { Command } from 'commander'
-import { ConsoleLogger } from 'logger/console-logger'
-import { MangoMarketConfigs, MangoMarket } from 'market/mango/mango-market'
-import { GridSignalConfigs, NaiveGridSignal } from 'signal/naive-grid-signal/naive-grid-signal'
-import { Signal } from 'types'
-import { Bot } from 'bot'
+import { ConsoleLogger } from './logger/console-logger'
+import { MangoMarketConfigs, MangoMarket } from './market/mango/mango-market'
+import { GridSignalConfigs, NaiveGridSignal } from './signal/naive-grid-signal/naive-grid-signal'
+import { Signal } from './types'
+import { Bot } from './bot'
 
 const program = new Command()
 

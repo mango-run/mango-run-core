@@ -1,5 +1,5 @@
-import { Signal, Market, SignalEventListener, OrderType, OrderSide, Logger, Callback } from 'types'
-import { doDestroy, doInitialize, measureTime } from 'utils'
+import { Signal, Market, SignalEventListener, OrderType, OrderSide, Logger, Callback } from './types'
+import { doDestroy, doInitialize, measureTime } from './utils'
 
 interface CallbackWithDetail {
   name: string

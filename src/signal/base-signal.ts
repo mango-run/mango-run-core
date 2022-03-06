@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events'
-import { Logger, Signal, SignalEvent, SignalEventListener, SignalEventPayload } from 'types'
+import { Logger, Signal, SignalEvent, SignalEventListener, SignalEventPayload } from '../types'
 
 export interface BaseSignalConfigs {
   interval?: number

@@ -1,4 +1,4 @@
-import { Logger } from 'types'
+import { Logger } from '../types'
 
 export class ConsoleLogger implements Logger {
   constructor(public namespace: string = '') {}

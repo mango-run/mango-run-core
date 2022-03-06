@@ -1,7 +1,8 @@
-import { floor } from 'lodash'
-import { BaseSignal, BaseSignalConfigs } from 'signal/base-signal'
-import { Logger, Market, OrderDraft, OrderSide, ReceiptStatus } from 'types'
-import { average, orderDraftKey, isBetween } from 'utils'
+import { floor } from 'lodash-es'
+
+import { Logger, Market, OrderDraft, OrderSide, ReceiptStatus } from '../../types'
+import { average, isBetween, orderDraftKey } from '../../utils'
+import { BaseSignal, BaseSignalConfigs } from '../base-signal'
 
 export interface GridSignalConfigs extends BaseSignalConfigs {
   market: Market

@@ -1,4 +1,4 @@
-import { Market } from 'types'
+import { Market } from '../types'
 
 export class MockMarket implements Market {
   balance = jest.fn()

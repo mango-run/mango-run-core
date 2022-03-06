@@ -1,4 +1,4 @@
-import { Callback, LifeCycle, Order, OrderDraft, OrderType } from 'types'
+import { Callback, LifeCycle, Order, OrderDraft, OrderType } from './types'
 
 export function average(...numbers: number[]) {
   if (numbers.length === 0) return 0
