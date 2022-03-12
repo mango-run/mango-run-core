@@ -156,6 +156,7 @@ export class MangoMarket implements Market {
           .map(o => {
             return {
               id: o.orderId.toString(),
+              orderId: o.orderId.toString(),
               status: ReceiptStatus.Placed,
               order: {
                 price: o.price,
@@ -174,6 +175,7 @@ export class MangoMarket implements Market {
           .map(f => {
             return {
               id: f.makerOrderId.toString(),
+              orderId: f.makerOrderId.toString(),
               status: ReceiptStatus.Fulfilled,
               order: {
                 price: f.price,
@@ -219,6 +221,7 @@ export class MangoMarket implements Market {
         id: '',
         status: ReceiptStatus.Error,
         order,
+        error: 'failed to fetch transaction log',
       }
     }
 
@@ -229,12 +232,14 @@ export class MangoMarket implements Market {
         id: '',
         status: ReceiptStatus.Error,
         order,
+        error: 'failed to parse transaction log',
       }
     }
 
     const id = matches[1]
-    const receipt = {
+    const receipt: Receipt = {
       id,
+      orderId: id,
       status: ReceiptStatus.Placed,
       order: order,
     }
@@ -260,6 +265,7 @@ export class MangoMarket implements Market {
           size: 0,
           side: OrderSide.Buy,
         },
+        error: `failed to find order by id: ${id}`,
       }
     }
 
@@ -273,8 +279,9 @@ export class MangoMarket implements Market {
 
     await this.connection.confirmTransaction(tx, 'confirmed')
 
-    const receipt = {
+    const receipt: Receipt = {
       id: id,
+      orderId: mangoOrder.orderId.toString(),
       status: ReceiptStatus.Canceled,
       order: {
         price: mangoOrder.price,
@@ -304,7 +311,8 @@ export class MangoMarket implements Market {
 
     const receipts: Receipt[] = mangoOrders.map(od => {
       const r: Receipt = {
-        id: od.orderId.toString() as string,
+        id: od.orderId.toString(),
+        orderId: od.orderId.toString(),
         status: ReceiptStatus.Canceled,
         order: {
           price: od.price,

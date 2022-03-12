@@ -24,17 +24,31 @@ export interface Order {
 }
 
 export enum ReceiptStatus {
+  // order sent but still not on chain
+  Pending,
+  // order has been on chain
   Placed,
   Canceled,
   Fulfilled,
   Error,
 }
 
-export interface Receipt {
+export type Receipt = {
   id: string
-  status: ReceiptStatus
   order: OrderDraft
-}
+} & (
+  | {
+      status: ReceiptStatus.Pending
+    }
+  | {
+      status: ReceiptStatus.Error
+      error: any
+    }
+  | {
+      status: ReceiptStatus
+      orderId: string
+    }
+)
 
 export interface Orderbook {
   asks: Order[]
