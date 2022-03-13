@@ -48,7 +48,7 @@ export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> {
     const [bestAsk, bestBid, receipts] = await Promise.all([
       market.bestAsk(),
       market.bestBid(),
-      market.receipts(ReceiptStatus.Placed),
+      market.receipts(ReceiptStatus.Placed, ReceiptStatus.PlacePending),
     ])
 
     if (!bestAsk || !bestBid) {

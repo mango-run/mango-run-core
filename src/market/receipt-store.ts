@@ -20,15 +20,15 @@ export class ReceiptStore implements IReceiptStore {
   }
 
   get(id: string): Receipt | null
-  get(status: ReceiptStatus): Receipt[]
-  get(idOrStatus: ReceiptStatus | string) {
+  get(...status: ReceiptStatus[]): Receipt[]
+  get(idOrStatus: ReceiptStatus | string, ...rest: ReceiptStatus[]) {
     if (typeof idOrStatus === 'string') {
       const receipt = this.byId[idOrStatus]
       if (receipt) return receipt
       this.logger.error('get failed', 'not found receipt', idOrStatus)
       return null
     }
-    return this.byStatus[idOrStatus]
+    return [idOrStatus, ...rest].reduce<Receipt[]>((acc, status) => [...acc, ...this.byStatus[status]], [])
   }
 
   add(draft: Omit<Receipt, 'id'>, id = uuid()): Receipt {
@@ -61,19 +61,6 @@ export class ReceiptStore implements IReceiptStore {
       return false
     }
     return this.update({ ...receipt, status: ReceiptStatus.Placed, orderId })
-  }
-
-  onCancel(id: string): boolean {
-    const receipt = this.get(id)
-    if (!receipt) {
-      this.logger.error('onCancel failed', 'not found receipt', id)
-      return false
-    }
-    if (receipt.status !== ReceiptStatus.Placed) {
-      this.logger.error('onCancel failed', 'receipt status is', receipt.status)
-      return false
-    }
-    return this.update({ ...receipt, status: ReceiptStatus.CancelPending })
   }
 
   onCanceled(id: string): boolean {

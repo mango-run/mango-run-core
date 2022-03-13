@@ -69,7 +69,7 @@ export interface Market extends LifeCycle {
   bestAsk(): Promise<Order | undefined>
   bestBid(): Promise<Order | undefined>
   orderbook(depth: number): Promise<Orderbook>
-  receipts(type: ReceiptStatus): Promise<Receipt[]>
+  receipts(...status: ReceiptStatus[]): Receipt[]
   placeOrder(order: OrderDraft): Promise<Receipt>
   cancelOrder(id: string): Promise<Receipt>
   cancelAllOrders(): Promise<Receipt[]>
@@ -135,11 +135,10 @@ export interface LifeCycle {
 
 export interface IReceiptStore {
   get(id: string): Receipt | null
-  get(status: ReceiptStatus): Receipt[]
+  get(...status: ReceiptStatus[]): Receipt[]
   add(receipt: Omit<Receipt, 'uuid'>): Receipt
   remove(id: string): boolean
   onPlaced(id: string, orderId: string): boolean
-  onCancel(id: string): boolean
   onCanceled(id: string): boolean
   onFulfilled(id: string): boolean
   onError(id: string, error: any): boolean

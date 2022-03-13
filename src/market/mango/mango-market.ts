@@ -32,7 +32,6 @@ export class MangoMarket implements Market {
    * @todo should generate according config to allow launch multiple bot on same market
    */
   botClientID = 5566
-  canceledReceipts: Receipt[] = []
 
   private groupConfig: GroupConfig
   private connection: Connection
@@ -43,6 +42,10 @@ export class MangoMarket implements Market {
   private market!: PerpMarket
 
   private hasInitialized = false
+  /**
+   * determine underlying process is keeping alive or not
+   */
+  private keepAlive = false
 
   receiptStore: ReceiptStore
 
@@ -73,6 +76,7 @@ export class MangoMarket implements Market {
   async initialize() {
     if (this.hasInitialized) return
     this.hasInitialized = true
+    this.keepAlive = true
 
     this.mangoClient = new MangoClient(this.connection, this.groupConfig.mangoProgramId)
     this.mangoGroup = await this.mangoClient.getMangoGroup(this.groupConfig.publicKey)
@@ -88,6 +92,7 @@ export class MangoMarket implements Market {
 
   async destroy() {
     this.hasInitialized = false
+    this.keepAlive = false
   }
 
   // fetch mango sub account list
@@ -114,7 +119,7 @@ export class MangoMarket implements Market {
   }
 
   async bestAsk(): Promise<Order | undefined> {
-    const ask = await (await this.market.loadAsks(this.connection)).getBest()
+    const ask = (await this.market.loadAsks(this.connection)).getBest()
     if (!ask) {
       return undefined
     }
@@ -126,7 +131,7 @@ export class MangoMarket implements Market {
   }
 
   async bestBid(): Promise<Order | undefined> {
-    const bid = await (await this.market.loadBids(this.connection)).getBest()
+    const bid = (await this.market.loadBids(this.connection)).getBest()
     if (!bid) {
       return undefined
     }
@@ -164,57 +169,8 @@ export class MangoMarket implements Market {
     }
   }
 
-  async receipts(status: ReceiptStatus): Promise<Receipt[]> {
-    if (!this.mangoAccount) {
-      return []
-    }
-
-    switch (status) {
-      case ReceiptStatus.Placed: {
-        const orders = await this.market.loadOrdersForAccount(this.connection, this.mangoAccount)
-        return orders
-          .filter(o => {
-            return o.clientId?.toNumber() === this.botClientID
-          })
-          .map(o => {
-            return {
-              id: o.orderId.toString(),
-              orderId: o.orderId.toString(),
-              status: ReceiptStatus.Placed,
-              order: {
-                price: o.price,
-                size: o.size,
-                side: o.side === 'buy' ? OrderSide.Buy : OrderSide.Sell,
-              },
-            }
-          })
-      }
-      case ReceiptStatus.Fulfilled: {
-        const fills = await this.market.loadFills(this.connection)
-        return fills
-          .filter(f => {
-            return f.makerClientOrderId.toNumber() === this.botClientID && f.maker === this.mangoAccount?.publicKey
-          })
-          .map(f => {
-            return {
-              id: f.makerOrderId.toString(),
-              orderId: f.makerOrderId.toString(),
-              status: ReceiptStatus.Fulfilled,
-              order: {
-                price: f.price,
-                size: f.quantity,
-                side: f.takerSide === 'sell' ? OrderSide.Buy : OrderSide.Sell,
-              },
-            }
-          })
-      }
-      case ReceiptStatus.Canceled:
-        return this.canceledReceipts
-      default:
-        break
-    }
-
-    return []
+  receipts(...status: ReceiptStatus[]): Receipt[] {
+    return this.receiptStore.get(...status)
   }
 
   async placeOrder(order: OrderDraft): Promise<Receipt> {
@@ -235,37 +191,11 @@ export class MangoMarket implements Market {
       this.botClientID, //client id
     )
 
-    await this.connection.confirmTransaction(tx, 'confirmed')
+    const receipt = this.receiptStore.add({ order, txHash: tx, status: ReceiptStatus.PlacePending })
 
-    const log = (await this.connection.getTransaction(tx))?.meta?.logMessages?.join(',')
-    if (!log) {
-      this.logger.debug('failed to fetch transaction log')
-      return {
-        id: '',
-        status: ReceiptStatus.Error,
-        order,
-        error: 'failed to fetch transaction log',
-      }
-    }
-
-    const matches = log.match(/\sorder_id=([\d\w]+)/)
-    if (!matches) {
-      this.logger.debug('failed to parse transaction log')
-      return {
-        id: '',
-        status: ReceiptStatus.Error,
-        order,
-        error: 'failed to parse transaction log',
-      }
-    }
-
-    const id = matches[1]
-    const receipt: Receipt = {
-      id,
-      orderId: id,
-      status: ReceiptStatus.Placed,
-      order: order,
-    }
+    this.waitForPlaced(receipt).then(success => {
+      if (success) this.waitForFulfilled(receipt)
+    })
 
     return receipt
   }
@@ -274,48 +204,39 @@ export class MangoMarket implements Market {
     if (!this.mangoAccount) {
       throw new Error('mango account undefined')
     }
-    const mangoOrder = (await this.market.loadOrdersForAccount(this.connection, this.mangoAccount)).find(od => {
-      od.orderId.toString() === id
-    })
 
-    if (!mangoOrder) {
-      this.logger.debug(`failed to find order by id: ${id}`)
-      return {
-        id: '',
-        status: ReceiptStatus.Error,
-        order: {
-          price: 0,
-          size: 0,
-          side: OrderSide.Buy,
-        },
-        error: `failed to find order by id: ${id}`,
-      }
+    let receipt = this.receiptStore.get(id)
+
+    if (!receipt) throw new Error(`cancel order failed, not found receipt: ${id}`)
+
+    if (receipt.status === ReceiptStatus.PlacePending) {
+      await this.waitForPlaced(receipt)
+      receipt = this.receiptStore.get(id)
     }
+
+    if (!receipt) throw new Error(`cancel order failed, not found receipt (${id}) after waited for placed`)
+
+    if (receipt.status !== ReceiptStatus.Placed)
+      throw new Error(`cancel order failed, receipt (${id}) has invalid status: ${receipt.status}`)
+
+    this.receiptStore.remove(id)
 
     const tx = await this.mangoClient.cancelPerpOrder(
       this.mangoGroup,
       this.mangoAccount,
       this.owner,
       this.market,
-      mangoOrder,
+      // cancel instruction needs only orderId
+      // mock perp order to prevent loading perp order
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { orderId: receipt.orderId } as any,
     )
 
-    await this.connection.confirmTransaction(tx, 'confirmed')
+    const cancelReceipt = this.receiptStore.add({ ...receipt, status: ReceiptStatus.CancelPending, txHash: tx })
 
-    const receipt: Receipt = {
-      id: id,
-      orderId: mangoOrder.orderId.toString(),
-      status: ReceiptStatus.Canceled,
-      order: {
-        price: mangoOrder.price,
-        size: mangoOrder.size,
-        side: mangoOrder.side === 'buy' ? OrderSide.Buy : OrderSide.Sell,
-      },
-    }
+    this.waitForCanceled(cancelReceipt)
 
-    this.canceledReceipts.push(receipt)
-
-    return receipt
+    return cancelReceipt
   }
 
   async fetchAllOrders(): Promise<PerpOrder[]> {
@@ -330,23 +251,16 @@ export class MangoMarket implements Market {
     if (!this.mangoAccount) {
       throw new Error('mango account undefined')
     }
-    let mangoOrders = await this.fetchAllOrders()
 
-    const receipts: Receipt[] = mangoOrders.map(od => {
-      const r: Receipt = {
-        id: od.orderId.toString(),
-        orderId: od.orderId.toString(),
-        status: ReceiptStatus.Canceled,
-        order: {
-          price: od.price,
-          size: od.size,
-          side: od.side === 'buy' ? OrderSide.Buy : OrderSide.Sell,
-        },
-      }
-      return r
-    })
+    const pendings = this.receiptStore.get(ReceiptStatus.PlacePending)
 
-    while (mangoOrders.length != 0) {
+    if (pendings.length > 0) {
+      await Promise.all(pendings.map(r => this.waitForPlaced(r)))
+    }
+
+    let receipts = this.receiptStore.get(ReceiptStatus.Placed)
+
+    while (receipts.length > 0) {
       const txs = await this.mangoClient.cancelAllPerpOrders(
         this.mangoGroup,
         [this.market],
@@ -354,12 +268,9 @@ export class MangoMarket implements Market {
         this.owner,
       )
 
-      for (let index = 0; index < txs.length; index++) {
-        const tx = txs[index]
-        await this.connection.confirmTransaction(tx)
-      }
+      await Promise.all(txs.map(tx => this.connection.confirmTransaction(tx, 'confirmed')))
 
-      mangoOrders = await this.fetchAllOrders()
+      receipts = this.receiptStore.get(ReceiptStatus.Placed)
     }
 
     return receipts
@@ -384,8 +295,9 @@ export class MangoMarket implements Market {
       this.receiptStore.onError(receipt.id, 'failed to parse transaction log')
       return false
     }
-    const id = matches[1]
-    this.receiptStore.onPlaced(receipt.id, id)
+    const orderId = matches[1]
+    this.receiptStore.onPlaced(receipt.id, orderId)
+    this.logger.info('order placed', `receipt id: ${receipt.id}`, `order id: ${orderId}`)
     return true
   }
 
@@ -397,20 +309,48 @@ export class MangoMarket implements Market {
     if (receipt.status !== ReceiptStatus.CancelPending) return false
     await this.connection.confirmTransaction(receipt.txHash, 'confirmed')
     this.receiptStore.onCanceled(receipt.id)
+    this.logger.info('order canceled', `receipt id: ${receipt.id}`)
+    return true
   }
 
   async waitForFulfilled(receipt: Receipt) {
-    if (receipt.status !== ReceiptStatus.Placed) return false
     let fulfilled = false
+
     while (!fulfilled) {
+      const latestReceipt = this.receiptStore.get(receipt.id)
+
+      if (!latestReceipt) {
+        this.logger.debug('not found receipt when waiting for fulfilled', `receipt id: ${receipt.id}`)
+        return false
+      }
+
+      if (latestReceipt.status !== ReceiptStatus.Placed) {
+        this.logger.debug(
+          'got stale receipt when waiting for fulfilled',
+          `receipt id: ${receipt.id}`,
+          `receipt status: ${receipt.status}`,
+        )
+        return false
+      }
+
       const fillEvents = await this.fillEvents.get()
-      const fillEvent = fillEvents.find(fe => fe.makerOrderId.toString() === receipt.orderId)
+
+      const fillEvent = fillEvents.find(fe => fe.makerOrderId.toString() === latestReceipt.orderId)
+
       if (fillEvent) {
         this.receiptStore.onFulfilled(receipt.id)
         fulfilled = true
       }
+
       await sleep(1000)
+
+      if (!this.keepAlive) {
+        return false
+      }
     }
+
+    this.logger.info('order fulfilled', `receipt id: ${receipt.id}`)
+
     return true
   }
 }
