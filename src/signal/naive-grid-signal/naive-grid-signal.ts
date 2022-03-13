@@ -1,4 +1,4 @@
-import { floor } from 'lodash-es'
+import { floor } from 'lodash'
 
 import { Logger, Market, OrderDraft, OrderSide, ReceiptStatus } from '../../types'
 import { average, isBetween, orderDraftKey } from '../../utils'

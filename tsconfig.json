@@ -11,8 +11,5 @@
     "declaration": true,
     "declarationMap": true,
     "declarationDir": "dist"
-  },
-  "ts-node": {
-    "require": ["tsconfig-paths/register"]
   }
 }

@@ -2,7 +2,6 @@
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
-  moduleDirectories: ['node_modules', 'src'],
   moduleNameMapper: {
     // jest still not support esm
     '^lodash-es$': 'lodash',

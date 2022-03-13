@@ -10,17 +10,20 @@
     "lint-staged": "lint-staged",
     "test": "jest",
     "build": "rollup --config rollup.config.js",
-    "deploy": "cd ./dist && yarn publish --ignore-scripts --non-interactive"
+    "deploy": "cd ./dist && yarn publish --ignore-scripts --non-interactive",
+    "ts-node": "node --loader ts-node/esm --experimental-specifier-resolution=node",
+    "script:debug": "yarn ts-node ./src/scripts/debug.ts",
+    "script:cancel-all-orders": "yarn ts-node ./src/scripts/cancel-all-orders.ts"
   },
   "dependencies": {
     "bn.js": "^5.2.0",
     "bs58": "^5.0.0",
-    "commander": "^9.0.0",
     "lodash-es": "^4.17.21",
     "uuid": "^8.3.2"
   },
   "devDependencies": {
     "@blockworks-foundation/mango-client": "^3.3.16",
+    "@rollup/plugin-commonjs": "^21.0.2",
     "@rollup/plugin-node-resolve": "^13.1.3",
     "@rollup/plugin-typescript": "^8.3.1",
     "@solana/web3.js": "^1.35.0",
@@ -29,6 +32,7 @@
     "@types/uuid": "^8.3.4",
     "@typescript-eslint/eslint-plugin": "^5.12.0",
     "@typescript-eslint/parser": "^5.12.0",
+    "dotenv": "^16.0.0",
     "eslint": "^8.9.0",
     "eslint-config-prettier": "^8.4.0",
     "eslint-plugin-jest": "^26.1.1",
@@ -42,7 +46,6 @@
     "rollup-plugin-copy": "^3.4.0",
     "ts-jest": "^27.1.3",
     "ts-node": "^10.5.0",
-    "tsconfig-paths": "^3.12.0",
     "typescript": "^4.5.5"
   },
   "peerDependencies": {
