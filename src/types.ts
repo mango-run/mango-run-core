@@ -24,8 +24,10 @@ export interface Order {
 }
 
 export enum ReceiptStatus {
-  // order sent but still not on chain
-  Pending,
+  // order placed but still not on chain
+  PlacePending,
+  // order canceled but still not on chain
+  CancelPending,
   // order has been on chain
   Placed,
   Canceled,
@@ -36,9 +38,10 @@ export enum ReceiptStatus {
 export type Receipt = {
   id: string
   order: OrderDraft
+  txHash?: string
 } & (
   | {
-      status: ReceiptStatus.Pending
+      status: ReceiptStatus.PlacePending
     }
   | {
       status: ReceiptStatus.Error
@@ -128,4 +131,16 @@ export interface Logger {
 export interface LifeCycle {
   initialize?(): Promise<void>
   destroy?(): Promise<void>
+}
+
+export interface IReceiptStore {
+  get(id: string): Receipt | null
+  get(status: ReceiptStatus): Receipt[]
+  add(receipt: Omit<Receipt, 'uuid'>): Receipt
+  remove(id: string): boolean
+  onPlaced(id: string, orderId: string): boolean
+  onCancel(id: string): boolean
+  onCanceled(id: string): boolean
+  onFulfilled(id: string): boolean
+  onError(id: string, error: any): boolean
 }

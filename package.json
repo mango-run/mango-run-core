@@ -16,7 +16,8 @@
     "bn.js": "^5.2.0",
     "bs58": "^5.0.0",
     "commander": "^9.0.0",
-    "lodash-es": "^4.17.21"
+    "lodash-es": "^4.17.21",
+    "uuid": "^8.3.2"
   },
   "devDependencies": {
     "@blockworks-foundation/mango-client": "^3.3.16",
@@ -25,6 +26,7 @@
     "@solana/web3.js": "^1.35.0",
     "@types/jest": "^27.4.1",
     "@types/lodash-es": "^4.17.6",
+    "@types/uuid": "^8.3.4",
     "@typescript-eslint/eslint-plugin": "^5.12.0",
     "@typescript-eslint/parser": "^5.12.0",
     "eslint": "^8.9.0",
