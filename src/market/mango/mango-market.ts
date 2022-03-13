@@ -22,6 +22,7 @@ export interface MangoMarketConfigs {
   // ex: sol
   symbol: string
   kind: MarketKind
+  rpc?: string | undefined
 }
 
 export class MangoMarket implements Market {
@@ -34,7 +35,7 @@ export class MangoMarket implements Market {
   canceledReceipts: Receipt[] = []
 
   private groupConfig: GroupConfig
-  private connection = new Connection('https://mercurial.rpcpool.com/', 'confirmed')
+  private connection: Connection
   private mangoClient!: MangoClient
   private mangoGroup!: MangoGroup
   private mangoCache!: MangoCache
@@ -64,6 +65,9 @@ export class MangoMarket implements Market {
     this.logger = logger.create('market')
     this.owner = new Account(this.configs.keypair.secretKey)
     this.receiptStore = new ReceiptStore(logger)
+
+    // default use genesysgo's rpc endpoint
+    this.connection = new Connection(configs.rpc || 'https://ssc-dao.genesysgo.net')
   }
 
   async initialize() {
