@@ -43,3 +43,45 @@ export async function doDestroy(lifeCycle: LifeCycle) {
   if (!lifeCycle.destroy) return
   await lifeCycle.destroy()
 }
+
+export interface CacheConfig {
+  ttl: number
+  refreshInterval?: number
+}
+
+export class Cache<T> implements LifeCycle {
+  data: Promise<T> | null = null
+
+  updatedAt = 0
+
+  isLoading = false
+
+  timer: any
+
+  constructor(private updater: () => Promise<T>, private config: CacheConfig) {
+    if (config.refreshInterval) {
+      this.timer = setInterval(() => this.get(), config.refreshInterval)
+    }
+  }
+
+  async destroy() {
+    if (this.timer) clearInterval(this.timer)
+  }
+
+  async get() {
+    // clear data if expired
+    if (!this.isLoading && Date.now() - this.updatedAt > this.config.ttl) {
+      this.data = null
+    }
+    // fetch data if required
+    if (!this.data) {
+      this.isLoading = true
+      this.data = this.updater().then(res => {
+        this.isLoading = false
+        this.updatedAt = Date.now()
+        return res
+      })
+    }
+    return await this.data
+  }
+}

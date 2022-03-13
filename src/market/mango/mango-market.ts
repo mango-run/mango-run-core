@@ -14,6 +14,8 @@ import {
 } from '@blockworks-foundation/mango-client'
 import { Account, Connection, Keypair } from '@solana/web3.js'
 import { Balance, Logger, Market, Order, Orderbook, OrderDraft, OrderSide, Receipt, ReceiptStatus } from '../../types'
+import { Cache, sleep } from '../../utils'
+import { ReceiptStore } from '../receipt-store'
 
 export interface MangoMarketConfigs {
   keypair: Keypair
@@ -25,6 +27,9 @@ export interface MangoMarketConfigs {
 export class MangoMarket implements Market {
   mangoAccount: MangoAccount | undefined
   owner: Account
+  /**
+   * @todo should generate according config to allow launch multiple bot on same market
+   */
   botClientID = 5566
   canceledReceipts: Receipt[] = []
 
@@ -38,6 +43,19 @@ export class MangoMarket implements Market {
 
   private hasInitialized = false
 
+  receiptStore: ReceiptStore
+
+  fillEvents = new Cache(
+    async () => {
+      if (!this.mangoAccount) return []
+      const events = await this.market.loadFills(this.connection)
+      return events.filter(
+        e => e.maker === this.mangoAccount?.publicKey && e.makerClientOrderId.toNumber() === this.botClientID,
+      )
+    },
+    { ttl: 1000 },
+  )
+
   constructor(private configs: MangoMarketConfigs, private logger: Logger) {
     const groupConfig = new Config(IDS).getGroup('mainnet', 'mainnet.1')
     if (!groupConfig) throw new Error('not found manago group config')
@@ -45,6 +63,7 @@ export class MangoMarket implements Market {
 
     this.logger = logger.create('market')
     this.owner = new Account(this.configs.keypair.secretKey)
+    this.receiptStore = new ReceiptStore(logger)
   }
 
   async initialize() {
@@ -340,5 +359,54 @@ export class MangoMarket implements Market {
     }
 
     return receipts
+  }
+
+  async waitForPlaced(receipt: Receipt) {
+    /**
+     * @todo remove it
+     */
+    if (!receipt.txHash) return false
+    if (receipt.status !== ReceiptStatus.PlacePending) return false
+    await this.connection.confirmTransaction(receipt.txHash, 'confirmed')
+    const log = (await this.connection.getTransaction(receipt.txHash))?.meta?.logMessages?.join(',')
+    if (!log) {
+      this.logger.debug('failed to fetch transaction log')
+      this.receiptStore.onError(receipt.id, 'failed to fetch transaction log')
+      return false
+    }
+    const matches = log.match(/\sorder_id=([\d\w]+)/)
+    if (!matches) {
+      this.logger.debug('failed to parse transaction log')
+      this.receiptStore.onError(receipt.id, 'failed to parse transaction log')
+      return false
+    }
+    const id = matches[1]
+    this.receiptStore.onPlaced(receipt.id, id)
+    return true
+  }
+
+  async waitForCanceled(receipt: Receipt) {
+    /**
+     * @todo remove it
+     */
+    if (!receipt.txHash) return false
+    if (receipt.status !== ReceiptStatus.CancelPending) return false
+    await this.connection.confirmTransaction(receipt.txHash, 'confirmed')
+    this.receiptStore.onCanceled(receipt.id)
+  }
+
+  async waitForFulfilled(receipt: Receipt) {
+    if (receipt.status !== ReceiptStatus.Placed) return false
+    let fulfilled = false
+    while (!fulfilled) {
+      const fillEvents = await this.fillEvents.get()
+      const fillEvent = fillEvents.find(fe => fe.makerOrderId.toString() === receipt.orderId)
+      if (fillEvent) {
+        this.receiptStore.onFulfilled(receipt.id)
+        fulfilled = true
+      }
+      await sleep(1000)
+    }
+    return true
   }
 }
