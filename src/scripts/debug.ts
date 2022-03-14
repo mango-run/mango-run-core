@@ -36,7 +36,7 @@ async function main() {
     market: market,
     priceUpperCap: 85,
     priceLowerCap: 75,
-    gridCount: 20,
+    gridCount: 100,
     orderSize: 0.1,
     gridActiveRange: 10,
     // startPrice: 0,

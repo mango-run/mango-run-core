@@ -178,20 +178,35 @@ export class MangoMarket implements Market {
       throw new Error('mango account undefined')
     }
 
-    const tx = await this.mangoClient.placePerpOrder(
-      this.mangoGroup,
-      this.mangoAccount,
-      this.mangoGroup.mangoCache,
-      this.market,
-      this.owner,
-      order.side === OrderSide.Buy ? 'buy' : 'sell',
-      order.price,
-      order.size,
-      order.type || 'postOnly',
-      this.botClientID, //client id
-    )
+    const mangoAccount = this.mangoAccount
 
-    const receipt = this.receiptStore.add({ order, txHash: tx, status: ReceiptStatus.PlacePending })
+    const txHash = await retry(async () => {
+      let txHash: string | undefined
+
+      try {
+        txHash = await this.mangoClient.placePerpOrder(
+          this.mangoGroup,
+          mangoAccount,
+          this.mangoGroup.mangoCache,
+          this.market,
+          this.owner,
+          order.side === OrderSide.Buy ? 'buy' : 'sell',
+          order.price,
+          order.size,
+          order.type || 'postOnly',
+          this.botClientID, //client id
+        )
+      } catch (error) {
+        if (typeof (error as { txid: string }).txid === 'string') txHash = (error as { txid: string }).txid
+        this.logger.debug('place order failed', error)
+      }
+
+      if (!txHash) throw new Error('place order failed')
+
+      return txHash
+    })
+
+    const receipt = this.receiptStore.add({ order, txHash, status: ReceiptStatus.PlacePending })
 
     this.waitForPlaced(receipt).then(success => {
       if (success) this.waitForFulfilled(receipt)
@@ -285,7 +300,10 @@ export class MangoMarket implements Market {
 
     const txHash = receipt.txHash
 
-    await retry(() => this.connection.confirmTransaction(txHash, 'confirmed'), { maxAttempt: 10 })
+    await retry(() => this.connection.confirmTransaction(txHash, 'confirmed'), {
+      maxAttempt: 100,
+      retryDelay: attempt => attempt * 100,
+    })
 
     const log = await retry(
       async () => {
@@ -327,7 +345,10 @@ export class MangoMarket implements Market {
     if (!receipt.txHash) return false
     if (receipt.status !== ReceiptStatus.CancelPending) return false
     const txHash = receipt.txHash
-    await retry(() => this.connection.confirmTransaction(txHash, 'confirmed'), { maxAttempt: 10 })
+    await retry(() => this.connection.confirmTransaction(txHash, 'confirmed'), {
+      maxAttempt: 100,
+      retryDelay: attempt => attempt * 100,
+    })
     this.receiptStore.onCanceled(receipt.id)
     this.logger.info('order canceled', `receipt id: ${receipt.id}`)
     return true
