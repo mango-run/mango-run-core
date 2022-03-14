@@ -10,19 +10,19 @@ export class Bot {
   blockCallbacks: CallbackWithDetail[] = []
 
   placeOrderHandler: SignalEventListener<'place_order_event'> = ({ order }) => {
-    this.blockSignal(() => this.market.placeOrder(order))
+    this.blockSignal(() => this.market.placeOrder(order), 'place order')
   }
 
   cancelOrderHandler: SignalEventListener<'cancel_order_event'> = ({ id }) => {
-    this.blockSignal(() => this.market.cancelOrder(id))
+    this.blockSignal(() => this.market.cancelOrder(id), 'cancel order')
   }
 
   cancelAllOrdersHandler: SignalEventListener<'cancel_all_orders_event'> = () => {
-    this.blockSignal(() => this.market.cancelAllOrders())
+    this.blockSignal(() => this.market.cancelAllOrders(), 'cancel all orders')
   }
 
   clearAllPositionHandler: SignalEventListener<'clear_all_position'> = () => {
-    this.blockSignal(() => this.clearAllPosition())
+    this.blockSignal(() => this.clearAllPosition(), 'clear all position')
   }
 
   protected logger: Logger
@@ -53,20 +53,20 @@ export class Bot {
     const callbacks = [...this.blockCallbacks]
     this.blockCallbacks = []
 
-    await Promise.all(
-      callbacks.map(async ({ name, callback }) => {
-        const dt = await measureTime(async () => {
-          try {
-            await callback()
-          } catch (error) {
-            this.logger.error(`block signal callback: ${name} failed`, error)
-          }
-        })
-        this.logger.error(`block signal callback: ${name} take ${dt}s`)
-      }),
-    )
+    const promises = callbacks.map(async ({ name, callback }) => {
+      const dt = await measureTime(async () => {
+        try {
+          await callback()
+        } catch (error) {
+          this.logger.error(`block signal callback: ${name} failed`, error)
+        }
+      })
+      this.logger.error(`block signal callback: ${name} take ${dt}s`)
+    })
 
-    this.logger.debug('block signal callbacks resolved')
+    const dt = await measureTime(() => Promise.all(promises))
+
+    this.logger.debug(`block signal callbacks resolved, take ${dt}s`)
 
     this.logger.debug('resume signal after block signal callbacks resolved')
 
