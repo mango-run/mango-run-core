@@ -282,9 +282,10 @@ export class MangoMarket implements Market {
      */
     if (!receipt.txHash) return false
     if (receipt.status !== ReceiptStatus.PlacePending) return false
-    await this.connection.confirmTransaction(receipt.txHash, 'confirmed')
 
     const txHash = receipt.txHash
+
+    await retry(() => this.connection.confirmTransaction(txHash, 'confirmed'), { maxAttempt: 10 })
 
     const log = await retry(
       async () => {
@@ -325,7 +326,8 @@ export class MangoMarket implements Market {
      */
     if (!receipt.txHash) return false
     if (receipt.status !== ReceiptStatus.CancelPending) return false
-    await this.connection.confirmTransaction(receipt.txHash, 'confirmed')
+    const txHash = receipt.txHash
+    await retry(() => this.connection.confirmTransaction(txHash, 'confirmed'), { maxAttempt: 10 })
     this.receiptStore.onCanceled(receipt.id)
     this.logger.info('order canceled', `receipt id: ${receipt.id}`)
     return true
