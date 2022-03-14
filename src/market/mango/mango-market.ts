@@ -14,7 +14,7 @@ import {
 } from '@blockworks-foundation/mango-client'
 import { Account, Connection, Keypair } from '@solana/web3.js'
 import { Balance, Logger, Market, Order, Orderbook, OrderDraft, OrderSide, Receipt, ReceiptStatus } from '../../types'
-import { Cache, sleep } from '../../utils'
+import { Cache, retry, sleep } from '../../utils'
 import { ReceiptStore } from '../receipt-store'
 
 export interface MangoMarketConfigs {
@@ -283,21 +283,39 @@ export class MangoMarket implements Market {
     if (!receipt.txHash) return false
     if (receipt.status !== ReceiptStatus.PlacePending) return false
     await this.connection.confirmTransaction(receipt.txHash, 'confirmed')
-    const log = (await this.connection.getTransaction(receipt.txHash))?.meta?.logMessages?.join(',')
+
+    const txHash = receipt.txHash
+
+    const log = await retry(
+      async () => {
+        const tx = await this.connection.getTransaction(txHash)
+        if (!tx) throw new Error(`not found transaction: ${txHash}`)
+        if (!tx.meta) throw new Error(`not found transaction meta: ${txHash}`)
+        if (!tx.meta.logMessages) throw new Error(`not found transaction meta log messages: ${txHash}`)
+        return tx.meta.logMessages.join(',')
+      },
+      { maxAttempt: 10, retryDelay: attempt => Math.pow(2, attempt) * 100 },
+    ).catch(() => void 0)
+
     if (!log) {
       this.logger.debug('failed to fetch transaction log')
       this.receiptStore.onError(receipt.id, 'failed to fetch transaction log')
       return false
     }
+
     const matches = log.match(/\sorder_id=([\d\w]+)/)
+
     if (!matches) {
       this.logger.debug('failed to parse transaction log')
       this.receiptStore.onError(receipt.id, 'failed to parse transaction log')
       return false
     }
+
     const orderId = matches[1]
+
     this.receiptStore.onPlaced(receipt.id, orderId)
     this.logger.info('order placed', `receipt id: ${receipt.id}`, `order id: ${orderId}`)
+
     return true
   }
 

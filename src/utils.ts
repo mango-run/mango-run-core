@@ -85,3 +85,27 @@ export class Cache<T> implements LifeCycle {
     return await this.data
   }
 }
+
+export interface RetryConfig {
+  maxAttempt?: number
+  retryDelay?: number | ((attempt: number) => number)
+  shouldRetry?: (error: unknown) => boolean
+}
+
+export async function retry<T>(fn: () => Promise<T>, config: RetryConfig = {}) {
+  const { maxAttempt = 3, retryDelay = 1000, shouldRetry = () => true } = config
+
+  for (let i = 0; i < maxAttempt; i++) {
+    try {
+      const res = await fn()
+      return res
+    } catch (error) {
+      if (i + 1 === maxAttempt) throw error
+      if (!shouldRetry(error)) throw error
+      const delay = typeof retryDelay === 'number' ? retryDelay : retryDelay(i + 1)
+      await sleep(delay)
+    }
+  }
+
+  throw new Error('reach max retry attempt')
+}
