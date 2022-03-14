@@ -13,6 +13,8 @@ export class ReceiptStore implements IReceiptStore {
 
   byId: Record<string, Receipt | undefined> = {}
 
+  byOrderId: Record<string, Receipt | undefined> = {}
+
   logger: Logger
 
   constructor(logger: Logger) {
@@ -31,10 +33,15 @@ export class ReceiptStore implements IReceiptStore {
     return [idOrStatus, ...rest].reduce<Receipt[]>((acc, status) => [...acc, ...this.byStatus[status]], [])
   }
 
+  getByOrderId(orderId: string): Receipt | null {
+    return this.byOrderId[orderId] || null
+  }
+
   add(draft: Omit<Receipt, 'id'>, id = uuid()): Receipt {
     const receipt = { ...draft, id } as Receipt
     this.byId[receipt.id] = receipt
     this.byStatus[receipt.status].push(receipt)
+    if (receipt.status === ReceiptStatus.Placed) this.byOrderId[receipt.orderId] = receipt
     return receipt
   }
 

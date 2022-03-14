@@ -10,9 +10,10 @@ import {
   MarketConfig,
   MarketKind,
   PerpMarket,
-  PerpOrder,
+  TimeoutError,
 } from '@blockworks-foundation/mango-client'
 import { Account, Connection, Keypair } from '@solana/web3.js'
+
 import { Balance, Logger, Market, Order, Orderbook, OrderDraft, OrderSide, Receipt, ReceiptStatus } from '../../types'
 import { Cache, retry, sleep } from '../../utils'
 import { ReceiptStore } from '../receipt-store'
@@ -52,10 +53,15 @@ export class MangoMarket implements Market {
   fillEvents = new Cache(
     async () => {
       if (!this.mangoAccount) return []
-      const events = await this.market.loadFills(this.connection)
-      return events.filter(
-        e => e.maker === this.mangoAccount?.publicKey && e.makerClientOrderId.toNumber() === this.botClientID,
-      )
+
+      const publicKey = this.mangoAccount.publicKey
+
+      const events = await retry(() => this.market.loadFills(this.connection)).catch(error => {
+        this.logger.error('update fill events failed', error)
+        return []
+      })
+
+      return events.filter(e => e.maker.equals(publicKey) && e.makerClientOrderId.toNumber() === this.botClientID)
     },
     { ttl: 1000 },
   )
@@ -181,10 +187,8 @@ export class MangoMarket implements Market {
     const mangoAccount = this.mangoAccount
 
     const txHash = await retry(async () => {
-      let txHash: string | undefined
-
       try {
-        txHash = await this.mangoClient.placePerpOrder(
+        return await this.mangoClient.placePerpOrder(
           this.mangoGroup,
           mangoAccount,
           this.mangoGroup.mangoCache,
@@ -197,19 +201,27 @@ export class MangoMarket implements Market {
           this.botClientID, //client id
         )
       } catch (error) {
-        if (typeof (error as { txid: string }).txid === 'string') txHash = (error as { txid: string }).txid
-        this.logger.debug('place order failed', error)
+        this.logger.debug('place order error', JSON.stringify(order), error)
+
+        if (error instanceof TimeoutError) {
+          // it may still possible sent successfully
+          return error.txid
+        }
+
+        throw error
       }
-
-      if (!txHash) throw new Error('place order failed')
-
-      return txHash
     })
 
     const receipt = this.receiptStore.add({ order, txHash, status: ReceiptStatus.PlacePending })
 
     this.waitForPlaced(receipt).then(success => {
-      if (success) this.waitForFulfilled(receipt)
+      if (success) {
+        this.logger.debug('receipt placed, waiting for fulfilled', JSON.stringify(receipt))
+        this.waitForFulfilled(receipt)
+      } else {
+        this.logger.debug('receipt not placed, remove it', JSON.stringify(receipt))
+        this.receiptStore.remove(receipt.id)
+      }
     })
 
     return receipt
@@ -219,6 +231,8 @@ export class MangoMarket implements Market {
     if (!this.mangoAccount) {
       throw new Error('mango account undefined')
     }
+
+    const mangoAccount = this.mangoAccount
 
     let receipt = this.receiptStore.get(id)
 
@@ -234,32 +248,39 @@ export class MangoMarket implements Market {
     if (receipt.status !== ReceiptStatus.Placed)
       throw new Error(`cancel order failed, receipt (${id}) has invalid status: ${receipt.status}`)
 
+    const orderId = receipt.orderId
+
     this.receiptStore.remove(id)
 
-    const tx = await this.mangoClient.cancelPerpOrder(
-      this.mangoGroup,
-      this.mangoAccount,
-      this.owner,
-      this.market,
-      // cancel instruction needs only orderId
-      // mock perp order to prevent loading perp order
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      { orderId: receipt.orderId } as any,
-    )
+    const txHash = await retry(async () => {
+      try {
+        return await this.mangoClient.cancelPerpOrder(
+          this.mangoGroup,
+          mangoAccount,
+          this.owner,
+          this.market,
+          // cancel instruction needs only orderId
+          // mock perp order to prevent loading perp order
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          { orderId } as any,
+        )
+      } catch (error) {
+        this.logger.debug('cancel order error', JSON.stringify(receipt), error)
 
-    const cancelReceipt = this.receiptStore.add({ ...receipt, status: ReceiptStatus.CancelPending, txHash: tx })
+        if (error instanceof TimeoutError) {
+          // it may still possible sent successfully
+          return error.txid
+        }
+
+        throw error
+      }
+    })
+
+    const cancelReceipt = this.receiptStore.add({ ...receipt, status: ReceiptStatus.CancelPending, txHash })
 
     this.waitForCanceled(cancelReceipt)
 
     return cancelReceipt
-  }
-
-  async fetchAllOrders(): Promise<PerpOrder[]> {
-    if (!this.mangoAccount) {
-      throw new Error('mango account undefined')
-    }
-    const mangoOrders = await this.market.loadOrdersForAccount(this.connection, this.mangoAccount)
-    return mangoOrders.filter(od => od.clientId?.toNumber() === this.botClientID)
   }
 
   async cancelAllOrders(): Promise<Receipt[]> {
@@ -273,9 +294,11 @@ export class MangoMarket implements Market {
       await Promise.all(pendings.map(r => this.waitForPlaced(r)))
     }
 
-    let receipts = this.receiptStore.get(ReceiptStatus.Placed)
+    let orders = await this.market.loadOrdersForAccount(this.connection, this.mangoAccount)
 
-    while (receipts.length > 0) {
+    const receipts: Receipt[] = []
+
+    while (orders.length > 0) {
       const txs = await this.mangoClient.cancelAllPerpOrders(
         this.mangoGroup,
         [this.market],
@@ -285,7 +308,21 @@ export class MangoMarket implements Market {
 
       await Promise.all(txs.map(tx => this.connection.confirmTransaction(tx, 'confirmed')))
 
-      receipts = this.receiptStore.get(ReceiptStatus.Placed)
+      const currentOrders = await this.market.loadOrdersForAccount(this.connection, this.mangoAccount)
+
+      const currentOrderIds: Record<string, boolean> = {}
+
+      for (const { orderId } of currentOrders) currentOrderIds[orderId.toString()] = true
+
+      for (const { orderId } of orders) {
+        if (currentOrderIds[orderId.toString()]) continue
+        const receipt = this.receiptStore.getByOrderId(orderId.toString())
+        if (!receipt) continue
+        this.receiptStore.onCanceled(receipt.id)
+        receipts.push(receipt)
+      }
+
+      orders = currentOrders
     }
 
     return receipts
@@ -300,10 +337,21 @@ export class MangoMarket implements Market {
 
     const txHash = receipt.txHash
 
-    await retry(() => this.connection.confirmTransaction(txHash, 'confirmed'), {
-      maxAttempt: 100,
-      retryDelay: attempt => attempt * 100,
-    })
+    this.logger.debug('waiting for order placed', JSON.stringify(receipt))
+
+    try {
+      await retry(() => this.connection.confirmTransaction(txHash, 'confirmed'), {
+        maxAttempt: 5,
+        retryDelay: attempt => attempt * 100,
+      })
+    } catch (error) {
+      this.logger.error('fail to confirm tx', JSON.stringify(receipt), error)
+      return false
+    }
+
+    this.logger.debug('waiting for order placed, tx confirmed', JSON.stringify(receipt))
+
+    this.logger.debug('waiting for order placed, getting tx log', JSON.stringify(receipt))
 
     const log = await retry(
       async () => {
@@ -314,13 +362,15 @@ export class MangoMarket implements Market {
         return tx.meta.logMessages.join(',')
       },
       { maxAttempt: 10, retryDelay: attempt => Math.pow(2, attempt) * 100 },
-    ).catch(() => void 0)
+    ).catch(error => this.logger.error('get tx log failed', JSON.stringify(receipt), error))
 
     if (!log) {
       this.logger.debug('failed to fetch transaction log')
       this.receiptStore.onError(receipt.id, 'failed to fetch transaction log')
       return false
     }
+
+    this.logger.debug('waiting for order placed, got tx log', JSON.stringify(receipt), log)
 
     const matches = log.match(/\sorder_id=([\d\w]+)/)
 
@@ -346,7 +396,7 @@ export class MangoMarket implements Market {
     if (receipt.status !== ReceiptStatus.CancelPending) return false
     const txHash = receipt.txHash
     await retry(() => this.connection.confirmTransaction(txHash, 'confirmed'), {
-      maxAttempt: 100,
+      maxAttempt: 5,
       retryDelay: attempt => attempt * 100,
     })
     this.receiptStore.onCanceled(receipt.id)

@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events'
 import { Logger, Signal, SignalEvent, SignalEventListener, SignalEventPayload } from '../types'
+import { retry } from '../utils'
 
 export interface BaseSignalConfigs {
   interval?: number
@@ -77,7 +78,9 @@ export abstract class BaseSignal<Config extends BaseSignalConfigs = BaseSignalCo
 
   async run() {
     if (!this.isPaused) {
-      await this.tick()
+      await retry(() => this.tick()).catch(error => {
+        this.logger.error('tick failed', error)
+      })
       this.emit('tick', void 0)
     }
 

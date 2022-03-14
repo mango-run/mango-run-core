@@ -136,6 +136,7 @@ export interface LifeCycle {
 export interface IReceiptStore {
   get(id: string): Receipt | null
   get(...status: ReceiptStatus[]): Receipt[]
+  getByOrderId(orderId: string): Receipt | null
   add(receipt: Omit<Receipt, 'uuid'>): Receipt
   remove(id: string): boolean
   onPlaced(id: string, orderId: string): boolean

@@ -104,6 +104,8 @@ export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> {
       if (draft) drafts.set(orderDraftKey(draft), draft)
     }
 
+    this.logger.debug(`signal drafts:\n${Array.from(drafts.keys()).join('\n')}`)
+
     const cancelOrders: string[] = []
 
     for (const receipt of receipts) {
@@ -113,9 +115,11 @@ export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> {
       if (priceDistance > pace * 2 * gridActiveRange) {
         // cancel order which has be out of boundary
         cancelOrders.push(receipt.id)
+        this.logger.debug('cancel order', receipt.id, JSON.stringify(receipt.order))
       } else {
         // remove draft which has placed
         drafts.delete(orderDraftKey(receipt.order))
+        this.logger.debug('remove draft because of it has placed', receipt.id, JSON.stringify(receipt.order))
       }
     }
 

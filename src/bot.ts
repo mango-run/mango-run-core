@@ -61,7 +61,7 @@ export class Bot {
           this.logger.error(`block signal callback: ${name} failed`, error)
         }
       })
-      this.logger.error(`block signal callback: ${name} take ${dt}s`)
+      this.logger.debug(`block signal callback: ${name} take ${dt}s`)
     })
 
     const dt = await measureTime(() => Promise.all(promises))

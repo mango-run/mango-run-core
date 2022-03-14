@@ -12,7 +12,7 @@ dotenv.config()
 main()
 
 async function main() {
-  const logger = new ConsoleLogger()
+  const logger = new ConsoleLogger(void 0, { newline: 1 })
 
   const marketConfigs: MangoMarketConfigs = {
     keypair: Keypair.fromSecretKey(base58.decode(process.env.PRIVATE_KEY || '')),
