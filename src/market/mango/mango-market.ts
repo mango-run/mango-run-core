@@ -30,10 +30,6 @@ export interface MangoMarketConfigs {
 export class MangoMarket implements Market {
   mangoAccount: MangoAccount | undefined
   owner: Account
-  /**
-   * @todo should generate according config to allow launch multiple bot on same market
-   */
-  botClientID = 5566
 
   private groupConfig: GroupConfig
   private connection: Connection
@@ -62,7 +58,7 @@ export class MangoMarket implements Market {
         return []
       })
 
-      return events.filter(e => e.maker.equals(publicKey) && e.makerClientOrderId.toNumber() === this.botClientID)
+      return events.filter(e => e.maker.equals(publicKey) && !!this.receiptStore.get(e.makerClientOrderId.toString()))
     },
     { ttl: 1000 },
   )
@@ -187,6 +183,8 @@ export class MangoMarket implements Market {
 
     const mangoAccount = this.mangoAccount
 
+    const clientOrderId = this.receiptStore.generateId()
+
     const txHash = await retry(async () => {
       try {
         return await this.mangoClient.placePerpOrder(
@@ -199,7 +197,7 @@ export class MangoMarket implements Market {
           order.price,
           order.size,
           order.type || 'postOnly',
-          this.botClientID, //client id
+          parseInt(clientOrderId, 10), //client id
         )
       } catch (error) {
         this.logger.debug('place order error', JSON.stringify(order), error)
@@ -213,7 +211,7 @@ export class MangoMarket implements Market {
       }
     })
 
-    const receipt = this.receiptStore.add({ order, txHash, status: ReceiptStatus.PlacePending })
+    const receipt = this.receiptStore.add({ order, txHash, status: ReceiptStatus.PlacePending }, clientOrderId)
 
     this.waitForPlaced(receipt).then(success => {
       if (success) {

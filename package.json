@@ -11,15 +11,13 @@
     "test": "jest",
     "build": "rollup --config rollup.config.js",
     "deploy": "cd ./dist && yarn publish --ignore-scripts --non-interactive",
-    "ts-node": "node --loader ts-node/esm --experimental-specifier-resolution=node",
     "script:debug": "yarn ts-node ./src/scripts/debug.ts",
     "script:cancel-all-orders": "yarn ts-node ./src/scripts/cancel-all-orders.ts"
   },
   "dependencies": {
     "bn.js": "^5.2.0",
     "bs58": "^5.0.0",
-    "lodash-es": "^4.17.21",
-    "uuid": "^8.3.2"
+    "lodash": "^4.17.21"
   },
   "devDependencies": {
     "@blockworks-foundation/mango-client": "^3.3.16",
@@ -40,7 +38,6 @@
     "husky": "^7.0.4",
     "jest": "^27.5.1",
     "lint-staged": "^12.3.4",
-    "lodash": "^4.17.21",
     "prettier": "^2.5.1",
     "rollup": "^2.69.1",
     "rollup-plugin-copy": "^3.4.0",

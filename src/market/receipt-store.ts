@@ -1,4 +1,3 @@
-import { v4 as uuid } from 'uuid'
 import { Receipt, ReceiptStatus, IReceiptStore, Logger } from '../types'
 
 export class ReceiptStore implements IReceiptStore {
@@ -17,8 +16,14 @@ export class ReceiptStore implements IReceiptStore {
 
   logger: Logger
 
+  private nextId = 0
+
   constructor(logger: Logger) {
     this.logger = logger.create('receipt-store')
+  }
+
+  generateId(): string {
+    return `${this.nextId++}`
   }
 
   get(id: string): Receipt | null
@@ -37,7 +42,7 @@ export class ReceiptStore implements IReceiptStore {
     return this.byOrderId[orderId] || null
   }
 
-  add(draft: Omit<Receipt, 'id'>, id = uuid()): Receipt {
+  add(draft: Omit<Receipt, 'id'>, id = this.generateId()): Receipt {
     const receipt = { ...draft, id } as Receipt
     this.byId[receipt.id] = receipt
     this.byStatus[receipt.status].push(receipt)

@@ -134,6 +134,7 @@ export interface LifeCycle {
 }
 
 export interface IReceiptStore {
+  generateId(): string
   get(id: string): Receipt | null
   get(...status: ReceiptStatus[]): Receipt[]
   getByOrderId(orderId: string): Receipt | null
