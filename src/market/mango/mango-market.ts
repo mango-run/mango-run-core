@@ -10,7 +10,9 @@ import {
   MarketConfig,
   MarketKind,
   PerpMarket,
+  QUOTE_INDEX,
   TimeoutError,
+  ZERO_BN,
 } from '@blockworks-foundation/mango-client'
 import BN from 'bn.js'
 import { Account, Connection, Keypair } from '@solana/web3.js'
@@ -442,5 +444,58 @@ export class MangoMarket implements Market {
     this.logger.info('order fulfilled', `receipt id: ${receipt.id}`)
 
     return true
+  }
+
+  async settlePnl() {
+    if (!this.mangoAccount) return null
+    const rootBankAccount = this.mangoGroup.rootBankAccounts[QUOTE_INDEX]
+    if (!rootBankAccount) return null
+    const marketIndex = this.mangoGroup.getPerpMarketIndex(this.market.publicKey)
+    const txid = await this.mangoClient.settlePnl(
+      this.mangoGroup,
+      this.mangoCache,
+      this.mangoAccount,
+      this.market,
+      rootBankAccount,
+      this.mangoCache.priceCache[marketIndex].price,
+      this.owner,
+      undefined,
+    )
+
+    return txid
+  }
+
+  async closePosition() {
+    if (!this.mangoAccount) return
+    const marketIndex = this.mangoGroup.getPerpMarketIndex(this.market.publicKey)
+    const perpAccount = this.mangoAccount.perpAccounts[marketIndex]
+    const side = perpAccount.basePosition.gt(ZERO_BN) ? 'sell' : 'buy'
+    // send a large size to ensure we are reducing the entire position
+    const size = Math.abs(this.market.baseLotsToNumber(perpAccount.basePosition)) * 2
+
+    // hard coded for now; market orders are very dangerous and fault prone
+    const maxSlippage: number | undefined = 0.025
+    const bb = await this.bestBid()
+    const ba = await this.bestAsk()
+    if (!bb || !ba) return
+    const referencePrice = (bb.price + ba.price) / 2
+
+    const txid = await this.mangoClient.placePerpOrder(
+      this.mangoGroup,
+      this.mangoAccount,
+      this.mangoGroup.mangoCache,
+      this.market,
+      this.owner,
+      side,
+      referencePrice * (1 + (side === 'buy' ? 1 : -1) * maxSlippage),
+      size,
+      'ioc',
+      0, // client order id
+      undefined,
+      true, // reduce only
+      undefined,
+    )
+
+    return txid
   }
 }
