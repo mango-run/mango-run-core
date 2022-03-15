@@ -78,6 +78,7 @@ export class Bot {
       measureTime(() => doInitialize(this.market)).then(dt => this.logger.info('market initialized', `take ${dt}s`)),
       measureTime(() => doInitialize(this.signal)).then(dt => this.logger.info('signal initialized', `take ${dt}s`)),
     ])
+    await measureTime(() => this.clearAllPosition()).then(dt => this.logger.info('clear all position', `take ${dt}s`))
     this.signal.on('place_order_event', this.placeOrderHandler)
     this.signal.on('cancel_order_event', this.cancelOrderHandler)
     this.signal.on('cancel_all_orders_event', this.cancelAllOrdersHandler)
@@ -91,6 +92,7 @@ export class Bot {
     this.signal.off('cancel_order_event', this.cancelOrderHandler)
     this.signal.off('cancel_all_orders_event', this.cancelAllOrdersHandler)
     this.signal.off('clear_all_position', this.clearAllPositionHandler)
+    await measureTime(() => this.clearAllPosition()).then(dt => this.logger.info('clear all position', `take ${dt}s`))
     await Promise.all([
       measureTime(() => doDestroy(this.market)).then(dt => this.logger.info('market destroyed', `take ${dt}s`)),
       measureTime(() => doDestroy(this.signal)).then(dt => this.logger.info('signal destroyed', `take ${dt}s`)),
