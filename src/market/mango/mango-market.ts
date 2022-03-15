@@ -12,6 +12,7 @@ import {
   PerpMarket,
   TimeoutError,
 } from '@blockworks-foundation/mango-client'
+import BN from 'bn.js'
 import { Account, Connection, Keypair } from '@solana/web3.js'
 
 import { Balance, Logger, Market, Order, Orderbook, OrderDraft, OrderSide, Receipt, ReceiptStatus } from '../../types'
@@ -248,7 +249,7 @@ export class MangoMarket implements Market {
     if (receipt.status !== ReceiptStatus.Placed)
       throw new Error(`cancel order failed, receipt (${id}) has invalid status: ${receipt.status}`)
 
-    const orderId = receipt.orderId
+    const orderId = new BN(receipt.orderId)
 
     this.receiptStore.remove(id)
 
