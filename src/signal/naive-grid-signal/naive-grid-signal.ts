@@ -45,11 +45,9 @@ export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> {
       takeProfitPrice,
     } = this.config
 
-    const [bestAsk, bestBid, receipts] = await Promise.all([
-      market.bestAsk(),
-      market.bestBid(),
-      market.receipts(ReceiptStatus.Placed, ReceiptStatus.PlacePending),
-    ])
+    const [bestAsk, bestBid] = await Promise.all([market.bestAsk(), market.bestBid()])
+
+    const receipts = market.receipts(ReceiptStatus.Placed, ReceiptStatus.PlacePending)
 
     if (!bestAsk || !bestBid) {
       this.logger.debug('no best ask or bid found, skip this tick')
@@ -82,6 +80,15 @@ export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> {
       this.stop()
       return
     }
+
+    this.logger.debug('stat report', {
+      placePendings: market.receipts(ReceiptStatus.PlacePending).length,
+      cancelPendings: market.receipts(ReceiptStatus.CancelPending).length,
+      placeds: market.receipts(ReceiptStatus.Placed).length,
+      fulfilleds: market.receipts(ReceiptStatus.Fulfilled).length,
+      errors: market.receipts(ReceiptStatus.Error).length,
+      canceled: market.receipts(ReceiptStatus.Canceled).length,
+    })
 
     // price diff between every grids
     const pace = (priceUpperCap - priceLowerCap) / gridCount

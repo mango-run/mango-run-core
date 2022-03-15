@@ -29,12 +29,7 @@ export class ReceiptStore implements IReceiptStore {
   get(id: string): Receipt | null
   get(...status: ReceiptStatus[]): Receipt[]
   get(idOrStatus: ReceiptStatus | string, ...rest: ReceiptStatus[]) {
-    if (typeof idOrStatus === 'string') {
-      const receipt = this.byId[idOrStatus]
-      if (receipt) return receipt
-      this.logger.error('get failed', 'not found receipt', idOrStatus)
-      return null
-    }
+    if (typeof idOrStatus === 'string') return this.byId[idOrStatus] || null
     return [idOrStatus, ...rest].reduce<Receipt[]>((acc, status) => [...acc, ...this.byStatus[status]], [])
   }
 

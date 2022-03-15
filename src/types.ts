@@ -138,7 +138,7 @@ export interface IReceiptStore {
   get(id: string): Receipt | null
   get(...status: ReceiptStatus[]): Receipt[]
   getByOrderId(orderId: string): Receipt | null
-  add(receipt: Omit<Receipt, 'uuid'>): Receipt
+  add(receipt: Omit<Receipt, 'id'>, id?: string): Receipt
   remove(id: string): boolean
   onPlaced(id: string, orderId: string): boolean
   onCanceled(id: string): boolean
