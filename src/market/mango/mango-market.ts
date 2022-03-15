@@ -235,9 +235,7 @@ export class MangoMarket implements Market {
 
     let receipt = this.receiptStore.get(id)
 
-    if (!receipt) throw new Error(`cancel order failed, not found receipt: ${id}`)
-
-    if (receipt.status === ReceiptStatus.PlacePending) {
+    if (receipt?.status === ReceiptStatus.PlacePending) {
       await this.waitForPlaced(receipt)
       receipt = this.receiptStore.get(id)
     }
@@ -247,7 +245,7 @@ export class MangoMarket implements Market {
     if (receipt.status !== ReceiptStatus.Placed)
       throw new Error(`cancel order failed, receipt (${id}) has invalid status: ${receipt.status}`)
 
-    const orderId = new BN(receipt.orderId)
+    const placedReceipt = receipt
 
     this.receiptStore.remove(id)
 
@@ -261,7 +259,7 @@ export class MangoMarket implements Market {
           // cancel instruction needs only orderId
           // mock perp order to prevent loading perp order
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          { orderId } as any,
+          { orderId: new BN(placedReceipt.orderId) } as any,
         )
       } catch (error) {
         this.logger.debug('cancel order error', JSON.stringify(receipt), error)
@@ -275,9 +273,19 @@ export class MangoMarket implements Market {
       }
     })
 
-    const cancelReceipt = this.receiptStore.add({ ...receipt, status: ReceiptStatus.CancelPending, txHash })
+    const cancelReceipt = this.receiptStore.add({ ...placedReceipt, status: ReceiptStatus.CancelPending, txHash })
 
-    this.waitForCanceled(cancelReceipt)
+    this.waitForCanceled(cancelReceipt).then(canceled => {
+      if (!canceled) {
+        this.logger.debug(
+          'receipt not canceled, restore placed receipt and remove cancel receipt',
+          JSON.stringify(placedReceipt),
+          JSON.stringify(cancelReceipt),
+        )
+        this.receiptStore.add(placedReceipt, placedReceipt.id)
+        this.receiptStore.remove(cancelReceipt.id)
+      }
+    })
 
     return cancelReceipt
   }
@@ -394,10 +402,15 @@ export class MangoMarket implements Market {
     if (!receipt.txHash) return false
     if (receipt.status !== ReceiptStatus.CancelPending) return false
     const txHash = receipt.txHash
-    await retry(() => this.connection.confirmTransaction(txHash, 'confirmed'), {
-      maxAttempt: 5,
-      retryDelay: attempt => attempt * 100,
-    })
+    try {
+      await retry(() => this.connection.confirmTransaction(txHash, 'confirmed'), {
+        maxAttempt: 5,
+        retryDelay: attempt => attempt * 100,
+      })
+    } catch (error) {
+      this.logger.error('fail to confirm tx', JSON.stringify(receipt), error)
+      return false
+    }
     this.receiptStore.onCanceled(receipt.id)
     this.logger.info('order canceled', `receipt id: ${receipt.id}`)
     return true
