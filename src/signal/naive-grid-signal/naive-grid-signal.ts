@@ -82,6 +82,11 @@ export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> {
     }
 
     this.logger.debug('stat report', {
+      currentPrice,
+      priceLowerCap,
+      priceUpperCap,
+      gridCount,
+      orderSize,
       placePendings: market.receipts(ReceiptStatus.PlacePending).length,
       cancelPendings: market.receipts(ReceiptStatus.CancelPending).length,
       placeds: market.receipts(ReceiptStatus.Placed).length,

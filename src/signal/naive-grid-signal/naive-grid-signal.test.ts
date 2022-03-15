@@ -51,7 +51,7 @@ describe('grid-signal', () => {
 
       market.bestAsk.mockResolvedValueOnce(order({ price: 15.5, size: 1 }))
       market.bestBid.mockResolvedValueOnce(order({ price: 14.5, size: 1 }))
-      market.receipts.mockResolvedValueOnce([])
+      market.receipts.mockReturnValue([])
 
       await signal.tick()
 
