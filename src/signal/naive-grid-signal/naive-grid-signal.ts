@@ -1,5 +1,3 @@
-import { floor } from 'lodash'
-
 import { Logger, Market, OrderDraft, OrderSide, ReceiptStatus } from '../../types'
 import { average, isBetween, orderDraftKey } from '../../utils'
 import { BaseSignal, BaseSignalConfigs } from '../base-signal'
@@ -108,9 +106,9 @@ export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> {
       let draft: OrderDraft | undefined
 
       if (currentPrice > gridPrice && isBetween(priceDistance, pace, pace * gridActiveRange)) {
-        draft = { side: OrderSide.Buy, size: orderSize, price: floor(gridPrice, 2) }
+        draft = { side: OrderSide.Buy, size: orderSize, price: parseFloat(gridPrice.toFixed(2)) }
       } else if (gridPrice > currentPrice && isBetween(priceDistance, pace, pace * gridActiveRange)) {
-        draft = { side: OrderSide.Sell, size: orderSize, price: floor(gridPrice, 2) }
+        draft = { side: OrderSide.Sell, size: orderSize, price: parseFloat(gridPrice.toFixed(2)) }
       }
 
       if (draft) drafts.set(orderDraftKey(draft), draft)
