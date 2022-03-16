@@ -1,6 +1,6 @@
-import { Receipt, ReceiptStatus, IReceiptStore, Logger } from '../types'
+import { Receipt, ReceiptStatus, ReceiptStore, Logger } from '../types'
 
-export class ReceiptStore implements IReceiptStore {
+export class InMemoryReceiptStore implements ReceiptStore {
   byStatus: Record<ReceiptStatus, Receipt[]> = {
     [ReceiptStatus.PlacePending]: [],
     [ReceiptStatus.CancelPending]: [],

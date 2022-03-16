@@ -1,49 +1,39 @@
-import dotenv from 'dotenv'
-import { Keypair } from '@solana/web3.js'
 import base58 from 'bs58'
-import { ConsoleLogger } from '../logger/console-logger'
-import { MangoMarketConfigs, MangoMarket } from '../market/mango/mango-market'
-import { GridSignalConfigs, NaiveGridSignal } from '../signal/naive-grid-signal/naive-grid-signal'
-import { Signal } from '../types'
+import dotenv from 'dotenv'
+
+import { Keypair } from '@solana/web3.js'
+
 import { Bot } from '../bot'
+import { ConsoleLogger } from '../logger/console-logger'
+import { MangoPerpMarket } from '../market/mango/mango-perp-market'
+import { NaiveGridSignal } from '../signal/naive-grid-signal/naive-grid-signal'
+import { Signal } from '../types'
+import { createMangoPerpMarketConfigs } from '../market/mango/helpers'
 
 dotenv.config()
 
 main()
 
 async function main() {
+  const keypair = Keypair.fromSecretKey(base58.decode(process.env.PRIVATE_KEY || ''))
+
+  const configs = await createMangoPerpMarketConfigs('mainnet', 'mainnet.1', keypair, 'SOL', 1)
+
   const logger = new ConsoleLogger(void 0, { newline: 1 })
 
-  const marketConfigs: MangoMarketConfigs = {
-    keypair: Keypair.fromSecretKey(base58.decode(process.env.PRIVATE_KEY || '')),
-    symbol: 'SOL',
-    kind: 'perp',
-  }
+  const market = new MangoPerpMarket(configs, logger)
 
-  const market = new MangoMarket(marketConfigs, logger)
-
-  await market.initialize()
-
-  const mangoAccounts = await market.subAccounts()
-  if (!mangoAccounts.length) {
-    logger.info('please create mango account first')
-    return
-  }
-
-  market.setSubAccountIndex(mangoAccounts[0])
-
-  const signalConfigs: GridSignalConfigs = {
-    market: market,
-    priceUpperCap: 85,
-    priceLowerCap: 75,
-    gridCount: 100,
-    orderSize: 0.1,
-    gridActiveRange: 10,
-    // startPrice: 0,
-    // stopLossPrice: 0,
-    // takeProfitPrice: 0,
-  }
-  const signal: Signal = new NaiveGridSignal(signalConfigs, logger)
+  const signal: Signal = new NaiveGridSignal(
+    {
+      market: market,
+      priceUpperCap: 85,
+      priceLowerCap: 75,
+      gridCount: 100,
+      orderSize: 0.1,
+      gridActiveRange: 10,
+    },
+    logger,
+  )
 
   const bot = new Bot(market, signal, logger)
 

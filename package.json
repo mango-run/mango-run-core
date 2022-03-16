@@ -1,6 +1,6 @@
 {
   "name": "@mango-run/core",
-  "version": "0.0.11",
+  "version": "0.0.12",
   "repository": "git@github.com:mango-run/mango-run-core.git",
   "author": "yujuiting <yujuiting@me.com>",
   "license": "MIT",
@@ -10,7 +10,7 @@
     "lint-staged": "lint-staged",
     "test": "jest",
     "build": "rollup --config rollup.config.js",
-    "deploy": "cd ./dist && yarn publish --ignore-scripts --non-interactive",
+    "deploy": "yarn build && cd ./dist && yarn publish --ignore-scripts --non-interactive",
     "script:debug": "yarn ts-node ./src/scripts/debug.ts",
     "script:cancel-all-orders": "yarn ts-node ./src/scripts/cancel-all-orders.ts"
   },

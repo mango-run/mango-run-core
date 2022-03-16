@@ -38,7 +38,7 @@ export enum ReceiptStatus {
 export type Receipt = {
   id: string
   order: OrderDraft
-  txHash?: string
+  txHash: string
 } & (
   | {
       status: ReceiptStatus.PlacePending
@@ -133,7 +133,7 @@ export interface LifeCycle {
   destroy?(): Promise<void>
 }
 
-export interface IReceiptStore {
+export interface ReceiptStore {
   generateId(): string
   get(id: string): Receipt | null
   get(...status: ReceiptStatus[]): Receipt[]

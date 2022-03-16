@@ -1,43 +1,53 @@
 import {
-  Config,
-  getMarketByBaseSymbolAndKind,
-  GroupConfig,
-  IDS,
   MangoAccount,
   MangoCache,
   MangoClient,
   MangoGroup,
   MarketConfig,
-  MarketKind,
   PerpMarket,
   TimeoutError,
 } from '@blockworks-foundation/mango-client'
 import BN from 'bn.js'
 import { Account, Connection, Keypair } from '@solana/web3.js'
 
-import { Balance, Logger, Market, Order, Orderbook, OrderDraft, OrderSide, Receipt, ReceiptStatus } from '../../types'
+import {
+  Balance,
+  Logger,
+  Market,
+  Order,
+  Orderbook,
+  OrderDraft,
+  OrderSide,
+  Receipt,
+  ReceiptStatus,
+  ReceiptStore,
+} from '../../types'
 import { Cache, retry, sleep } from '../../utils'
-import { ReceiptStore } from '../receipt-store'
+import { InMemoryReceiptStore } from '../in-memory-receipt-store'
 
-export interface MangoMarketConfigs {
+export interface MangoPerpMarketConfigs {
   keypair: Keypair
-  // ex: sol
-  symbol: string
-  kind: MarketKind
-  rpc?: string | undefined
+  connection: Connection
+  mangoAccount: MangoAccount
+  mangoCache: MangoCache
+  mangoClient: MangoClient
+  mangoGroup: MangoGroup
+  marketConfig: MarketConfig
+  perpMarket: PerpMarket
+  receiptStore?: ReceiptStore
 }
 
-export class MangoMarket implements Market {
-  mangoAccount: MangoAccount | undefined
-  owner: Account
+export class MangoPerpMarket implements Market {
+  private owner: Account
 
-  private groupConfig: GroupConfig
   private connection: Connection
-  private mangoClient!: MangoClient
-  private mangoGroup!: MangoGroup
-  private mangoCache!: MangoCache
-  private marketConfig!: MarketConfig
-  private market!: PerpMarket
+  private mangoAccount: MangoAccount
+  private mangoClient: MangoClient
+  private mangoGroup: MangoGroup
+  private mangoCache: MangoCache
+  private marketConfig: MarketConfig
+  private perpMarket: PerpMarket
+  private receiptStore: ReceiptStore
 
   private hasInitialized = false
   /**
@@ -45,15 +55,13 @@ export class MangoMarket implements Market {
    */
   private keepAlive = false
 
-  receiptStore: ReceiptStore
-
   fillEvents = new Cache(
     async () => {
       if (!this.mangoAccount) return []
 
       const publicKey = this.mangoAccount.publicKey
 
-      const events = await retry(() => this.market.loadFills(this.connection)).catch(error => {
+      const events = await retry(() => this.perpMarket.loadFills(this.connection)).catch(error => {
         this.logger.error('update fill events failed', error)
         return []
       })
@@ -63,50 +71,28 @@ export class MangoMarket implements Market {
     { ttl: 1000 },
   )
 
-  constructor(private configs: MangoMarketConfigs, private logger: Logger) {
-    const groupConfig = new Config(IDS).getGroup('mainnet', 'mainnet.1')
-    if (!groupConfig) throw new Error('not found manago group config')
-    this.groupConfig = groupConfig
-
+  constructor(configs: MangoPerpMarketConfigs, private logger: Logger) {
     this.logger = logger.create('market')
-    this.owner = new Account(this.configs.keypair.secretKey)
-    this.receiptStore = new ReceiptStore(logger)
-
-    // default use genesysgo's rpc endpoint
-    this.connection = new Connection(configs.rpc || 'https://ssc-dao.genesysgo.net')
+    this.owner = new Account(configs.keypair.secretKey)
+    this.connection = configs.connection
+    this.mangoAccount = configs.mangoAccount
+    this.mangoClient = configs.mangoClient
+    this.mangoGroup = configs.mangoGroup
+    this.mangoCache = configs.mangoCache
+    this.marketConfig = configs.marketConfig
+    this.perpMarket = configs.perpMarket
+    this.receiptStore = configs.receiptStore || new InMemoryReceiptStore(logger)
   }
 
   async initialize() {
     if (this.hasInitialized) return
     this.hasInitialized = true
     this.keepAlive = true
-
-    this.mangoClient = new MangoClient(this.connection, this.groupConfig.mangoProgramId)
-    this.mangoGroup = await this.mangoClient.getMangoGroup(this.groupConfig.publicKey)
-    this.mangoCache = await this.mangoGroup.loadCache(this.connection)
-    this.marketConfig = getMarketByBaseSymbolAndKind(this.groupConfig, this.configs.symbol, this.configs.kind)
-    this.market = await this.mangoGroup.loadPerpMarket(
-      this.connection,
-      this.marketConfig.marketIndex,
-      this.marketConfig.baseDecimals,
-      this.marketConfig.quoteDecimals,
-    )
   }
 
   async destroy() {
     this.hasInitialized = false
     this.keepAlive = false
-  }
-
-  // fetch mango sub account list
-  async subAccounts() {
-    const accounts = await this.mangoClient.getMangoAccountsForOwner(this.mangoGroup, this.configs.keypair.publicKey)
-    return accounts
-  }
-
-  // set current operated sub account
-  setSubAccountIndex(account: MangoAccount) {
-    this.mangoAccount = account
   }
 
   async balance(): Promise<Balance> {
@@ -115,14 +101,14 @@ export class MangoMarket implements Market {
     }
 
     const perpAccount = this.mangoAccount.perpAccounts[this.marketConfig.marketIndex]
-    const base = this.market.baseLotsToNumber(perpAccount.basePosition)
+    const base = this.perpMarket.baseLotsToNumber(perpAccount.basePosition)
     const indexPrice = this.mangoGroup.getPrice(this.marketConfig.marketIndex, this.mangoCache).toNumber()
     const quote = Math.abs(base * indexPrice)
     return { base, quote }
   }
 
   async bestAsk(): Promise<Order | undefined> {
-    const ask = (await this.market.loadAsks(this.connection)).getBest()
+    const ask = (await this.perpMarket.loadAsks(this.connection)).getBest()
     if (!ask) {
       return undefined
     }
@@ -134,7 +120,7 @@ export class MangoMarket implements Market {
   }
 
   async bestBid(): Promise<Order | undefined> {
-    const bid = (await this.market.loadBids(this.connection)).getBest()
+    const bid = (await this.perpMarket.loadBids(this.connection)).getBest()
     if (!bid) {
       return undefined
     }
@@ -147,8 +133,8 @@ export class MangoMarket implements Market {
 
   async orderbook(depth: number): Promise<Orderbook> {
     const [_asks, _bids] = await Promise.all([
-      this.market.loadAsks(this.connection),
-      this.market.loadBids(this.connection),
+      this.perpMarket.loadAsks(this.connection),
+      this.perpMarket.loadBids(this.connection),
     ])
 
     const asks: Order[] = _asks.getL2(depth).map(([price, size]) => {
@@ -191,7 +177,7 @@ export class MangoMarket implements Market {
           this.mangoGroup,
           mangoAccount,
           this.mangoGroup.mangoCache,
-          this.market,
+          this.perpMarket,
           this.owner,
           order.side === OrderSide.Buy ? 'buy' : 'sell',
           order.price,
@@ -255,7 +241,7 @@ export class MangoMarket implements Market {
           this.mangoGroup,
           mangoAccount,
           this.owner,
-          this.market,
+          this.perpMarket,
           // cancel instruction needs only orderId
           // mock perp order to prevent loading perp order
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -301,21 +287,21 @@ export class MangoMarket implements Market {
       await Promise.all(pendings.map(r => this.waitForPlaced(r)))
     }
 
-    let orders = await this.market.loadOrdersForAccount(this.connection, this.mangoAccount)
+    let orders = await this.perpMarket.loadOrdersForAccount(this.connection, this.mangoAccount)
 
     const receipts: Receipt[] = []
 
     while (orders.length > 0) {
       const txs = await this.mangoClient.cancelAllPerpOrders(
         this.mangoGroup,
-        [this.market],
+        [this.perpMarket],
         this.mangoAccount,
         this.owner,
       )
 
       await Promise.all(txs.map(tx => this.connection.confirmTransaction(tx, 'confirmed')))
 
-      const currentOrders = await this.market.loadOrdersForAccount(this.connection, this.mangoAccount)
+      const currentOrders = await this.perpMarket.loadOrdersForAccount(this.connection, this.mangoAccount)
 
       const currentOrderIds: Record<string, boolean> = {}
 
@@ -336,10 +322,6 @@ export class MangoMarket implements Market {
   }
 
   async waitForPlaced(receipt: Receipt) {
-    /**
-     * @todo remove it
-     */
-    if (!receipt.txHash) return false
     if (receipt.status !== ReceiptStatus.PlacePending) return false
 
     const txHash = receipt.txHash
@@ -396,10 +378,6 @@ export class MangoMarket implements Market {
   }
 
   async waitForCanceled(receipt: Receipt) {
-    /**
-     * @todo remove it
-     */
-    if (!receipt.txHash) return false
     if (receipt.status !== ReceiptStatus.CancelPending) return false
     const txHash = receipt.txHash
     try {
