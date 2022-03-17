@@ -12,7 +12,8 @@
     "build": "rollup --config rollup.config.js",
     "deploy": "yarn build && cd ./dist && yarn publish --ignore-scripts --non-interactive",
     "script:debug": "yarn ts-node ./src/scripts/debug.ts",
-    "script:cancel-all-orders": "yarn ts-node ./src/scripts/cancel-all-orders.ts"
+    "script:cancel-all-orders": "yarn ts-node ./src/scripts/cancel-all-orders.ts",
+    "script:close-position": "yarn ts-node ./scr/scripts/close-position.ts"
   },
   "dependencies": {
     "bn.js": "^5.2.0",

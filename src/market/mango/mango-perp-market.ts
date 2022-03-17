@@ -439,14 +439,15 @@ export class MangoPerpMarket implements Market {
 
   async settlePnl() {
     if (!this.mangoAccount) return null
-    const rootBankAccount = this.mangoGroup.rootBankAccounts[QUOTE_INDEX]
+    const rootBanks = await this.mangoGroup.loadRootBanks(this.connection)
+    const rootBankAccount = rootBanks[QUOTE_INDEX]
     if (!rootBankAccount) return null
-    const marketIndex = this.mangoGroup.getPerpMarketIndex(this.market.publicKey)
+    const marketIndex = this.mangoGroup.getPerpMarketIndex(this.perpMarket.publicKey)
     const txid = await this.mangoClient.settlePnl(
       this.mangoGroup,
       this.mangoCache,
       this.mangoAccount,
-      this.market,
+      this.perpMarket,
       rootBankAccount,
       this.mangoCache.priceCache[marketIndex].price,
       this.owner,
@@ -458,11 +459,11 @@ export class MangoPerpMarket implements Market {
 
   async closePosition() {
     if (!this.mangoAccount) return
-    const marketIndex = this.mangoGroup.getPerpMarketIndex(this.market.publicKey)
+    const marketIndex = this.mangoGroup.getPerpMarketIndex(this.perpMarket.publicKey)
     const perpAccount = this.mangoAccount.perpAccounts[marketIndex]
     const side = perpAccount.basePosition.gt(ZERO_BN) ? 'sell' : 'buy'
     // send a large size to ensure we are reducing the entire position
-    const size = Math.abs(this.market.baseLotsToNumber(perpAccount.basePosition)) * 2
+    const size = Math.abs(this.perpMarket.baseLotsToNumber(perpAccount.basePosition)) * 2
 
     // hard coded for now; market orders are very dangerous and fault prone
     const maxSlippage: number | undefined = 0.025
@@ -475,7 +476,7 @@ export class MangoPerpMarket implements Market {
       this.mangoGroup,
       this.mangoAccount,
       this.mangoGroup.mangoCache,
-      this.market,
+      this.perpMarket,
       this.owner,
       side,
       referencePrice * (1 + (side === 'buy' ? 1 : -1) * maxSlippage),
