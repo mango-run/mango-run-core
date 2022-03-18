@@ -95,6 +95,7 @@ export class MangoPerpMarket implements Market {
   async destroy() {
     this.hasInitialized = false
     this.keepAlive = false
+    await this.fillEvents.destroy()
   }
 
   async balance(): Promise<Balance> {
