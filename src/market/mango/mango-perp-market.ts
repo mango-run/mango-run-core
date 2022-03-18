@@ -221,17 +221,22 @@ export class MangoPerpMarket implements Market {
 
     const mangoAccount = this.mangoAccount
 
-    let receipt = this.receiptStore.get(id)
+    const receipt = this.receiptStore.get(id)
 
-    if (receipt?.status === ReceiptStatus.PlacePending) {
-      await this.waitForPlaced(receipt)
-      receipt = this.receiptStore.get(id)
+    if (!receipt) throw new Error(`cancel order failed, not found receipt (${id})`)
+
+    /**
+     * @todo handle canceling pending orders
+     */
+    // if (receipt?.status === ReceiptStatus.PlacePending) {
+    //   await this.waitForPlaced(receipt)
+    //   receipt = this.receiptStore.get(id)
+    // }
+
+    if (receipt.status !== ReceiptStatus.Placed) {
+      // throw new Error(`cancel order failed, receipt (${id}) has invalid status: ${receipt.status}`)
+      return receipt
     }
-
-    if (!receipt) throw new Error(`cancel order failed, not found receipt (${id}) after waited for placed`)
-
-    if (receipt.status !== ReceiptStatus.Placed)
-      throw new Error(`cancel order failed, receipt (${id}) has invalid status: ${receipt.status}`)
 
     const placedReceipt = receipt
 
@@ -264,7 +269,10 @@ export class MangoPerpMarket implements Market {
     const cancelReceipt = this.receiptStore.add({ ...placedReceipt, status: ReceiptStatus.CancelPending, txHash })
 
     this.waitForCanceled(cancelReceipt).then(canceled => {
-      if (!canceled) {
+      if (canceled) {
+        this.logger.debug('receipt canceled', JSON.stringify(cancelReceipt))
+        this.receiptStore.onCanceled(cancelReceipt.id)
+      } else {
         this.logger.debug(
           'receipt not canceled, restore placed receipt and remove cancel receipt',
           JSON.stringify(placedReceipt),
