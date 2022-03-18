@@ -24,34 +24,75 @@ export interface Order {
 }
 
 export enum ReceiptStatus {
-  // order placed but still not on chain
+  /**
+   * Placing order transaction sent but still not confirmed.
+   */
   PlacePending,
-  // order canceled but still not on chain
+  /**
+   * Canceling order transaction sent bit still not confirmed.
+   */
   CancelPending,
-  // order has been on chain
+  /**
+   * Placing order transaction sent and confirmed
+   */
   Placed,
+  /**
+   * Canceling order transaction sent and confirmed
+   */
   Canceled,
+  /**
+   * Placed order has fulfiiled
+   */
   Fulfilled,
   Error,
 }
 
-export type Receipt = {
+interface BaseReceipt {
+  status: ReceiptStatus
+  /**
+   * Receipt id managed locally.
+   */
   id: string
   order: OrderDraft
   txHash: string
-} & (
-  | {
-      status: ReceiptStatus.PlacePending
-    }
-  | {
-      status: ReceiptStatus.Error
-      error: any
-    }
-  | {
-      status: ReceiptStatus
-      orderId: string
-    }
-)
+}
+
+export interface PlacePendingReceipt extends BaseReceipt {
+  status: ReceiptStatus.PlacePending
+}
+
+export interface PlacedReceipt extends BaseReceipt {
+  status: ReceiptStatus.Placed
+  orderId: string
+}
+
+export interface CancelPendingReceipt extends BaseReceipt {
+  status: ReceiptStatus.CancelPending
+  orderId: string
+}
+
+export interface CanceledReceipt extends BaseReceipt {
+  status: ReceiptStatus.Canceled
+  orderId: string
+}
+
+export interface FulfilledReceipt extends BaseReceipt {
+  status: ReceiptStatus.Fulfilled
+  orderId: string
+}
+
+export interface ErrorReceipt extends BaseReceipt {
+  status: ReceiptStatus.Error
+  error: any
+}
+
+export type Receipt =
+  | PlacePendingReceipt
+  | PlacedReceipt
+  | CancelPendingReceipt
+  | CanceledReceipt
+  | FulfilledReceipt
+  | ErrorReceipt
 
 export interface Orderbook {
   asks: Order[]

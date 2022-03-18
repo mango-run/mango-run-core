@@ -54,9 +54,9 @@ export class Cache<T> implements LifeCycle {
 
   updatedAt = 0
 
-  isLoading = false
+  private isLoading = false
 
-  timer: any
+  private timer: any
 
   constructor(private updater: () => Promise<T>, private config: CacheConfig) {
     if (config.refreshInterval) {

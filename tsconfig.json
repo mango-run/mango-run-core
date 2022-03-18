@@ -10,6 +10,7 @@
     "downlevelIteration": true,
     "declaration": true,
     "declarationMap": true,
-    "declarationDir": "dist"
+    "declarationDir": "dist",
+    "skipLibCheck": true
   }
 }

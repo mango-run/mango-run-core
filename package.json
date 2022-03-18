@@ -13,7 +13,9 @@
     "lint-staged": "lint-staged",
     "test": "jest",
     "build": "rollup --config rollup.config.js",
-    "deploy": "yarn build && cd ./dist && yarn publish --ignore-scripts --non-interactive"
+    "build:docs": "typedoc src/index.ts",
+    "deploy": "yarn build && cd ./dist && yarn publish --ignore-scripts --non-interactive",
+    "deploy:docs": "yarn build:docs && gh-pages -d docs"
   },
   "dependencies": {
     "bn.js": "^5.2.0",
@@ -34,6 +36,7 @@
     "eslint-config-prettier": "^8.4.0",
     "eslint-plugin-jest": "^26.1.1",
     "eslint-plugin-prettier": "^4.0.0",
+    "gh-pages": "^3.2.3",
     "husky": "^7.0.4",
     "jest": "^27.5.1",
     "lint-staged": "^12.3.4",
@@ -42,6 +45,7 @@
     "rollup-plugin-copy": "^3.4.0",
     "ts-jest": "^27.1.3",
     "ts-node": "^10.5.0",
+    "typedoc": "^0.22.13",
     "typescript": "^4.5.5"
   },
   "peerDependencies": {
