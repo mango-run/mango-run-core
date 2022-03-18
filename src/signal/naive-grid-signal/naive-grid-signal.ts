@@ -1,5 +1,6 @@
-import { Logger, Market, OrderDraft, OrderSide, ReceiptStatus } from '../../types'
-import { average, isBetween, orderDraftKey } from '../../utils'
+import { SortedOrderDraftQueue } from '../../queue/sorted-order-draft-queue'
+import { LifeCycle, Logger, Market, OrderDraft, OrderSide, ReceiptStatus } from '../../types'
+import { average, Cache, isBetween, orderDraftKey } from '../../utils'
 import { BaseSignal, BaseSignalConfigs } from '../base-signal'
 
 export interface GridSignalConfigs extends BaseSignalConfigs {
@@ -21,13 +22,39 @@ export interface GridSignalConfigs extends BaseSignalConfigs {
   stopLossPrice?: number
   // cancel all orders, clear all position and stop signal after price higher or equal to take profit price
   takeProfitPrice?: number
+  // maximum count of emitted signals at once
+  batchCount?: number
 }
 
-export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> {
+export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> implements LifeCycle {
   hasStarted = false
+
+  currentPrice = new Cache(
+    async () => {
+      const { market } = this.config
+      const [bestAsk, bestBid] = await Promise.all([market.bestAsk(), market.bestBid()])
+      if (!bestAsk || !bestBid) return 0
+      return average(bestAsk.price, bestBid.price)
+    },
+    { ttl: 1000 },
+  )
+
+  orderDraftQueue = new SortedOrderDraftQueue((a, b) => {
+    const currentPrice = this.currentPrice.currentValue
+    if (!currentPrice) return 0
+    const distanceA = Math.abs(a.price - currentPrice)
+    const distanceB = Math.abs(b.price - currentPrice)
+    return distanceA - distanceB
+  })
+
+  isDigestingOrderDraftQueue = false
 
   constructor(config: GridSignalConfigs, logger: Logger) {
     super(config, logger)
+  }
+
+  async destroy() {
+    await this.currentPrice.destroy()
   }
 
   async tick() {
@@ -85,6 +112,7 @@ export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> {
       priceUpperCap,
       gridCount,
       orderSize,
+      placeQueue: this.orderDraftQueue.size(),
       placePendings: market.receipts(ReceiptStatus.PlacePending).length,
       cancelPendings: market.receipts(ReceiptStatus.CancelPending).length,
       placeds: market.receipts(ReceiptStatus.Placed).length,
@@ -116,15 +144,22 @@ export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> {
 
     this.logger.debug(`signal drafts:\n${Array.from(drafts.keys()).join('\n')}`)
 
+    // cancel orders which still in queue
+    this.orderDraftQueue.removeMatched(draft => {
+      const priceDistance = Math.abs(draft.price - currentPrice)
+      return priceDistance > pace * 2 * gridActiveRange
+    })
+
     const cancelOrders: string[] = []
 
+    // cancel orders which has on chain
     for (const receipt of receipts) {
       const priceDistance = Math.abs(receipt.order.price - currentPrice)
 
       // cancel all orders which are beyond over 2 times of grid active range
       if (priceDistance > pace * 2 * gridActiveRange) {
         // cancel order which has be out of boundary
-        cancelOrders.push(receipt.id)
+        this.emit('cancel_order_event', { id: receipt.id })
         this.logger.debug('cancel order', receipt.id, JSON.stringify(receipt.order))
       } else {
         // remove draft which has placed
@@ -137,10 +172,33 @@ export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> {
       this.emit('cancel_order_event', { id })
     }
 
-    for (const [, order] of drafts) {
-      this.emit('place_order_event', { order })
+    for (const [, draft] of drafts) {
+      this.orderDraftQueue.push(draft)
     }
 
+    this.digestOrderDraftQueue()
+
     return
+  }
+
+  digestOrderDraftQueue() {
+    this.logger.debug('digesting order draft queue')
+
+    if (this.isDigestingOrderDraftQueue) return
+
+    this.isDigestingOrderDraftQueue = true
+
+    const { batchCount = 5 } = this.config
+
+    let drafts: OrderDraft[]
+
+    do {
+      drafts = this.orderDraftQueue.head(batchCount)
+      for (const order of drafts) this.emit('place_order_event', { order })
+    } while (drafts.length > 0 && this.isRunning && !this.isPaused)
+
+    this.isDigestingOrderDraftQueue = false
+
+    this.logger.debug('stop to digest order draft queue')
   }
 }

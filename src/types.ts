@@ -145,3 +145,15 @@ export interface ReceiptStore {
   onFulfilled(id: string): boolean
   onError(id: string, error: any): boolean
 }
+
+export interface Queue<T> {
+  push(item: T): void
+  find(predicate: (item: T) => boolean): T | undefined
+  // return -1 if not found
+  findIndex(predicate: (item: T) => boolean): number
+  remove(index: number): boolean
+  removeMatched(predicate: (item: T) => boolean): void
+  head(): T | undefined
+  head(count: number): T[]
+  size(): number
+}

@@ -58,6 +58,11 @@ export class Cache<T> implements LifeCycle {
 
   timer: any
 
+  /**
+   * current resolved value, it may be expired
+   */
+  currentValue: T | null = null
+
   constructor(private updater: () => Promise<T>, private config: CacheConfig) {
     if (config.refreshInterval) {
       this.timer = setInterval(() => this.get(), config.refreshInterval)
@@ -79,6 +84,7 @@ export class Cache<T> implements LifeCycle {
       this.data = this.updater().then(res => {
         this.isLoading = false
         this.updatedAt = Date.now()
+        this.currentValue = res
         return res
       })
     }
