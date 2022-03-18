@@ -1,0 +1,51 @@
+{
+  "name": "@mango-run/core",
+  "version": "0.0.13",
+  "repository": "git@github.com:mango-run/mango-run-core.git",
+  "author": "yujuiting <yujuiting@me.com>",
+  "license": "MIT",
+  "main": "index.js",
+  "bugs": {
+    "url": "https://github.com/mango-run/mango-run-core/issues"
+  },
+  "scripts": {
+    "prepare": "husky install",
+    "lint-staged": "lint-staged",
+    "test": "jest",
+    "build": "rollup --config rollup.config.js",
+    "deploy": "yarn build && cd ./dist && yarn publish --ignore-scripts --non-interactive"
+  },
+  "dependencies": {
+    "bn.js": "^5.2.0",
+    "bs58": "^5.0.0"
+  },
+  "devDependencies": {
+    "@blockworks-foundation/mango-client": "^3.3.16",
+    "@rollup/plugin-commonjs": "^21.0.2",
+    "@rollup/plugin-node-resolve": "^13.1.3",
+    "@rollup/plugin-typescript": "^8.3.1",
+    "@solana/web3.js": "^1.35.0",
+    "@types/jest": "^27.4.1",
+    "@types/uuid": "^8.3.4",
+    "@typescript-eslint/eslint-plugin": "^5.12.0",
+    "@typescript-eslint/parser": "^5.12.0",
+    "dotenv": "^16.0.0",
+    "eslint": "^8.9.0",
+    "eslint-config-prettier": "^8.4.0",
+    "eslint-plugin-jest": "^26.1.1",
+    "eslint-plugin-prettier": "^4.0.0",
+    "husky": "^7.0.4",
+    "jest": "^27.5.1",
+    "lint-staged": "^12.3.4",
+    "prettier": "^2.5.1",
+    "rollup": "^2.69.1",
+    "rollup-plugin-copy": "^3.4.0",
+    "ts-jest": "^27.1.3",
+    "ts-node": "^10.5.0",
+    "typescript": "^4.5.5"
+  },
+  "peerDependencies": {
+    "@blockworks-foundation/mango-client": "^3.3.16",
+    "@solana/web3.js": "^1.35.0"
+  }
+}
