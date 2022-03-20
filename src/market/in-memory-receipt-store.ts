@@ -38,6 +38,7 @@ export class InMemoryReceiptStore implements ReceiptStore {
   }
 
   add(draft: Omit<Receipt, 'id'>, id = this.generateId()): Receipt {
+    if (parseFloat(id) >= this.nextId) this.nextId = parseFloat(id) + 1
     const receipt = { ...draft, id } as Receipt
     this.byId[receipt.id] = receipt
     this.byStatus[receipt.status].push(receipt)

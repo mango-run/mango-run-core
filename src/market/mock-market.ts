@@ -9,4 +9,5 @@ export class MockMarket implements Market {
   placeOrder = jest.fn()
   cancelOrder = jest.fn()
   cancelAllOrders = jest.fn()
+  closeAllPosition = jest.fn()
 }

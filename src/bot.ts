@@ -22,7 +22,7 @@ export class Bot {
   }
 
   clearAllPositionHandler: SignalEventListener<'clear_all_position'> = () => {
-    this.blockSignal(() => this.clearAllPosition(), 'clear all position')
+    this.blockSignal(() => this.market.closeAllPosition(), 'clear all position')
   }
 
   protected logger: Logger
@@ -99,37 +99,5 @@ export class Bot {
       measureTime(() => doDestroy(this.market)).then(dt => this.logger.info('market destroyed', `take ${dt}s`)),
       measureTime(() => doDestroy(this.signal)).then(dt => this.logger.info('signal destroyed', `take ${dt}s`)),
     ])
-  }
-
-  async clearAllPosition() {
-    this.logger.info('clearing all position')
-
-    let isFulfilled = false
-
-    while (!isFulfilled) {
-      const [{ base }, bestBid] = await Promise.all([this.market.balance(), this.market.bestBid()])
-
-      if (base === 0) {
-        isFulfilled = true
-        break
-      }
-
-      if (bestBid) {
-        await this.market.placeOrder({
-          type: OrderType.IOC,
-          side: OrderSide.Sell,
-          price: bestBid.price,
-          size: Math.min(bestBid.size, base),
-        })
-      } else {
-        this.logger.debug('not found best bid')
-      }
-    }
-
-    const balance = await this.market.balance()
-
-    this.logger.info(`all position cleared, balance.base: ${balance.base}, balance.quote: ${balance.quote}`)
-
-    return isFulfilled
   }
 }

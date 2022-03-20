@@ -4,10 +4,10 @@ import {
   MangoClient,
   MangoGroup,
   MarketConfig,
+  nativeI80F48ToUi,
   PerpMarket,
   QUOTE_INDEX,
   TimeoutError,
-  ZERO_BN,
 } from '@blockworks-foundation/mango-client'
 import BN from 'bn.js'
 import { Account, Connection, Keypair } from '@solana/web3.js'
@@ -59,8 +59,6 @@ export class MangoPerpMarket implements Market {
 
   fillEvents = new Cache(
     async () => {
-      if (!this.mangoAccount) return []
-
       const publicKey = this.mangoAccount.publicKey
 
       const events = await retry(() => this.perpMarket.loadFills(this.connection)).catch(error => {
@@ -90,6 +88,8 @@ export class MangoPerpMarket implements Market {
     if (this.hasInitialized) return
     this.hasInitialized = true
     this.keepAlive = true
+
+    await this.syncReceiptsFromChain()
   }
 
   async destroy() {
@@ -99,14 +99,14 @@ export class MangoPerpMarket implements Market {
   }
 
   async balance(): Promise<Balance> {
-    if (!this.mangoAccount) {
-      throw new Error('mango account undefined')
-    }
-
     const perpAccount = this.mangoAccount.perpAccounts[this.marketConfig.marketIndex]
+    // in base token
     const base = this.perpMarket.baseLotsToNumber(perpAccount.basePosition)
-    const indexPrice = this.mangoGroup.getPrice(this.marketConfig.marketIndex, this.mangoCache).toNumber()
-    const quote = Math.abs(base * indexPrice)
+    // perp market use `collateral available` as quote balance
+    const quote = nativeI80F48ToUi(
+      this.mangoAccount.getHealth(this.mangoGroup, this.mangoCache, 'Init'),
+      this.mangoGroup.tokens[QUOTE_INDEX].decimals,
+    ).toNumber()
     return { base, quote }
   }
 
@@ -166,19 +166,13 @@ export class MangoPerpMarket implements Market {
   }
 
   async placeOrder(order: OrderDraft): Promise<Receipt> {
-    if (!this.mangoAccount) {
-      throw new Error('mango account undefined')
-    }
-
-    const mangoAccount = this.mangoAccount
-
     const clientOrderId = this.receiptStore.generateId()
 
     const txHash = await retry(async () => {
       try {
         return await this.mangoClient.placePerpOrder(
           this.mangoGroup,
-          mangoAccount,
+          this.mangoAccount,
           this.mangoGroup.mangoCache,
           this.perpMarket,
           this.owner,
@@ -216,12 +210,6 @@ export class MangoPerpMarket implements Market {
   }
 
   async cancelOrder(id: string): Promise<Receipt> {
-    if (!this.mangoAccount) {
-      throw new Error('mango account undefined')
-    }
-
-    const mangoAccount = this.mangoAccount
-
     const receipt = this.receiptStore.get(id)
 
     if (!receipt) throw new Error(`cancel order failed, not found receipt (${id})`)
@@ -247,7 +235,7 @@ export class MangoPerpMarket implements Market {
       try {
         return await this.mangoClient.cancelPerpOrder(
           this.mangoGroup,
-          mangoAccount,
+          this.mangoAccount,
           this.owner,
           this.perpMarket,
           // cancel instruction needs only orderId
@@ -288,10 +276,6 @@ export class MangoPerpMarket implements Market {
   }
 
   async cancelAllOrders(): Promise<Receipt[]> {
-    if (!this.mangoAccount) {
-      throw new Error('mango account undefined')
-    }
-
     const pendings = this.receiptStore.get(ReceiptStatus.PlacePending)
 
     if (pendings.length > 0) {
@@ -447,7 +431,6 @@ export class MangoPerpMarket implements Market {
   }
 
   async settlePnl() {
-    if (!this.mangoAccount) return null
     const rootBanks = await this.mangoGroup.loadRootBanks(this.connection)
     const rootBankAccount = rootBanks[QUOTE_INDEX]
     if (!rootBankAccount) return null
@@ -466,22 +449,24 @@ export class MangoPerpMarket implements Market {
     return txid
   }
 
-  async closePosition() {
-    if (!this.mangoAccount) return
-    const marketIndex = this.mangoGroup.getPerpMarketIndex(this.perpMarket.publicKey)
-    const perpAccount = this.mangoAccount.perpAccounts[marketIndex]
-    const side = perpAccount.basePosition.gt(ZERO_BN) ? 'sell' : 'buy'
-    // send a large size to ensure we are reducing the entire position
-    const size = Math.abs(this.perpMarket.baseLotsToNumber(perpAccount.basePosition)) * 2
+  async closeAllPosition() {
+    let balance = await this.balance()
+
+    const side = balance.base > 0 ? 'sell' : 'buy'
+    // // send a large size to ensure we are reducing the entire position
+    const size = Math.abs(balance.base) * 2
 
     // hard coded for now; market orders are very dangerous and fault prone
     const maxSlippage: number | undefined = 0.025
     const bb = await this.bestBid()
     const ba = await this.bestAsk()
-    if (!bb || !ba) return
+    if (!bb || !ba) {
+      this.logger.error('close all position failed', 'no best bid or ask')
+      return false
+    }
     const referencePrice = (bb.price + ba.price) / 2
 
-    const txid = await this.mangoClient.placePerpOrder(
+    const txHash = await this.mangoClient.placePerpOrder(
       this.mangoGroup,
       this.mangoAccount,
       this.mangoGroup.mangoCache,
@@ -497,6 +482,57 @@ export class MangoPerpMarket implements Market {
       undefined,
     )
 
-    return txid
+    try {
+      await retry(() => this.connection.confirmTransaction(txHash, 'confirmed'), {
+        maxAttempt: 5,
+        retryDelay: attempt => attempt * 100,
+      })
+    } catch (error) {
+      this.logger.error('close all position failed', error)
+      return false
+    }
+
+    balance = await this.balance()
+
+    return balance.base === 0
+  }
+
+  async syncReceiptsFromChain() {
+    this.logger.debug('start to syncing receipts from chain')
+
+    const orders = await this.perpMarket.loadOrdersForAccount(this.connection, this.mangoAccount)
+
+    for (const order of orders) {
+      const id = order.clientId?.toString()
+      const orderId = order.orderId.toString()
+
+      if (this.receiptStore.getByOrderId(orderId)) {
+        this.logger.debug('found local receipt with order id:', orderId)
+        continue
+      }
+
+      if (!id) {
+        this.logger.debug('restore receipt failed, not found client id from order, order id:', orderId)
+        continue
+      }
+
+      const receipt = this.receiptStore.add(
+        {
+          status: ReceiptStatus.Placed,
+          txHash: 'restored-receipt',
+          orderId,
+          order: {
+            price: order.price,
+            size: order.size,
+            side: order.side === 'buy' ? OrderSide.Buy : OrderSide.Sell,
+          },
+        },
+        id,
+      )
+
+      this.logger.debug('receipt restored from chain', JSON.stringify(receipt))
+
+      this.waitForFulfilled(receipt)
+    }
   }
 }

@@ -94,6 +94,14 @@ export type Receipt =
   | FulfilledReceipt
   | ErrorReceipt
 
+export type ReceiptWithoutId =
+  | Omit<PlacePendingReceipt, 'id'>
+  | Omit<PlacedReceipt, 'id'>
+  | Omit<CancelPendingReceipt, 'id'>
+  | Omit<CanceledReceipt, 'id'>
+  | Omit<FulfilledReceipt, 'id'>
+  | Omit<ErrorReceipt, 'id'>
+
 export interface Orderbook {
   asks: Order[]
   bids: Order[]
@@ -114,6 +122,8 @@ export interface Market extends LifeCycle {
   placeOrder(order: OrderDraft): Promise<Receipt>
   cancelOrder(id: string): Promise<Receipt>
   cancelAllOrders(): Promise<Receipt[]>
+  // return true if successfully close all position
+  closeAllPosition(): Promise<boolean>
 }
 
 export interface PlaceOrderEvent {
@@ -179,7 +189,7 @@ export interface ReceiptStore {
   get(id: string): Receipt | null
   get(...status: ReceiptStatus[]): Receipt[]
   getByOrderId(orderId: string): Receipt | null
-  add(receipt: Omit<Receipt, 'id'>, id?: string): Receipt
+  add(receipt: ReceiptWithoutId, id?: string): Receipt
   remove(id: string): boolean
   onPlaced(id: string, orderId: string): boolean
   onCanceled(id: string): boolean
