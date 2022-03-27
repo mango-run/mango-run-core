@@ -1,4 +1,5 @@
 import floor from 'lodash.floor'
+import { OrderType } from '../..'
 import { Logger, Market, OrderDraft, OrderSide, ReceiptStatus } from '../../types'
 import { average, isBetween, orderDraftKey } from '../../utils'
 import { BaseSignal, BaseSignalConfigs } from '../base-signal'
@@ -71,6 +72,7 @@ export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> {
           price: currentPrice * 0.025,
           size: expectedPosition - balance.base,
           side: OrderSide.Buy,
+          type: OrderType.IOC,
         })
       }
     } else {
@@ -80,6 +82,7 @@ export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> {
           price: currentPrice * 0.025,
           size: balance.base - expectedPosition,
           side: OrderSide.Sell,
+          type: OrderType.IOC,
         })
       }
     }
