@@ -22,6 +22,8 @@ export interface GridSignalConfigs extends BaseSignalConfigs {
   stopLossPrice?: number
   // cancel all orders, clear all position and stop signal after price higher or equal to take profit price
   takeProfitPrice?: number
+
+  gridType: 'long' | 'short' | 'neutral'
 }
 
 export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> {
@@ -29,6 +31,60 @@ export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> {
 
   constructor(config: GridSignalConfigs, logger: Logger) {
     super(config, logger)
+  }
+
+  async init() {
+    const { market, gridType = 'neutral', priceLowerCap, priceUpperCap, gridCount, orderSize, startPrice } = this.config
+
+    let started = false
+    let currentPrice = 0
+    while (!started) {
+      const [bestAsk, bestBid] = await Promise.all([market.bestAsk(), market.bestBid()])
+
+      if (!bestAsk || !bestBid) {
+        this.logger.debug('no best ask or bid found, skip this tick')
+        this.logger.debug(`wait 10 seconds...`)
+        await new Promise(r => setTimeout(r, 10 * 1000))
+        continue
+      }
+
+      currentPrice = average(bestAsk.price, bestBid.price)
+
+      if (startPrice && currentPrice > startPrice) {
+        this.logger.debug(`still not meet start price (${startPrice}), skip this tick`)
+        this.logger.debug(`wait 10 seconds...`)
+        await new Promise(r => setTimeout(r, 10 * 1000))
+      } else {
+        started = true
+        break
+      }
+    }
+
+    if (gridType === 'neutral') return true
+
+    const balance = await market.balance()
+
+    if (gridType === 'long') {
+      const expectedPosition = ((priceUpperCap - currentPrice) / gridCount) * orderSize
+      if (balance.base < expectedPosition) {
+        await market.placeOrder({
+          price: currentPrice * 0.025,
+          size: expectedPosition - balance.base,
+          side: OrderSide.Buy,
+        })
+      }
+    } else {
+      const expectedPosition = ((priceLowerCap - currentPrice) / gridCount) * orderSize
+      if (balance.base > expectedPosition) {
+        await market.placeOrder({
+          price: currentPrice * 0.025,
+          size: balance.base - expectedPosition,
+          side: OrderSide.Sell,
+        })
+      }
+    }
+
+    return true
   }
 
   async tick() {
@@ -39,7 +95,6 @@ export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> {
       gridCount,
       gridActiveRange = 10,
       orderSize,
-      startPrice,
       stopLossPrice,
       takeProfitPrice,
     } = this.config
@@ -54,15 +109,6 @@ export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> {
     }
 
     const currentPrice = average(bestAsk.price, bestBid.price)
-
-    if (!this.hasStarted) {
-      if (startPrice && currentPrice > startPrice) {
-        this.logger.debug(`still not meet start price (${startPrice}), skip this tick`)
-        return
-      }
-
-      this.hasStarted = true
-    }
 
     if (stopLossPrice && currentPrice <= stopLossPrice) {
       this.logger.debug(`meet stop loss price (${stopLossPrice}), stop signal`)

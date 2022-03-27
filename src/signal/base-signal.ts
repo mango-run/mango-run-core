@@ -47,6 +47,7 @@ export abstract class BaseSignal<Config extends BaseSignalConfigs = BaseSignalCo
   async start() {
     if (this.isRunning) return false
     this.isRunning = true
+    await this.init()
     this.emit('start', void 0)
     await this.run()
     return true
@@ -88,6 +89,8 @@ export abstract class BaseSignal<Config extends BaseSignalConfigs = BaseSignalCo
       setTimeout(() => this.run(), this.interval)
     }
   }
+
+  abstract init(): Promise<boolean>
 
   abstract tick(): Promise<void>
 }
