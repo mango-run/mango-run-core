@@ -535,4 +535,21 @@ export class MangoPerpMarket implements Market {
       this.waitForFulfilled(receipt)
     }
   }
+
+  async getPrice() {
+    const bb = await this.bestBid()
+    const ba = await this.bestAsk()
+    if (!bb || !ba) {
+      this.logger.error('close all position failed', 'no best bid or ask')
+      return undefined
+    }
+    const referencePrice = (bb.price + ba.price) / 2
+    return referencePrice
+  }
+
+  async getCollateralValue() {
+    const asset = await this.mangoAccount.getAssetsVal(this.mangoGroup, this.mangoCache)
+    const liabilities = await this.mangoAccount.getLiabsVal(this.mangoGroup, this.mangoCache)
+    return asset.toNumber() - liabilities.toNumber()
+  }
 }
