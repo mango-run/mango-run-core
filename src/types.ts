@@ -124,6 +124,8 @@ export interface Market extends LifeCycle {
   cancelAllOrders(): Promise<Receipt[]>
   // return true if successfully close all position
   closeAllPosition(): Promise<boolean>
+  getPrice(): Promise<number | undefined>
+  getCollateralValue(): Promise<number>
 }
 
 export interface PlaceOrderEvent {
