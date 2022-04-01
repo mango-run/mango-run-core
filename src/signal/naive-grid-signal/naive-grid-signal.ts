@@ -23,8 +23,10 @@ export interface GridSignalConfigs extends BaseSignalConfigs {
   stopLossPrice?: number
   // cancel all orders, clear all position and stop signal after price higher or equal to take profit price
   takeProfitPrice?: number
-
-  gridType: 'long' | 'short' | 'neutral'
+  /**
+   * @default 'neutral'
+   */
+  gridType?: 'long' | 'short' | 'neutral'
 }
 
 export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> {
@@ -34,7 +36,7 @@ export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> {
     super(config, logger)
   }
 
-  async init() {
+  async initialize() {
     const { market, gridType = 'neutral', priceLowerCap, priceUpperCap, gridCount, orderSize, startPrice } = this.config
 
     let started = false
@@ -61,33 +63,36 @@ export class NaiveGridSignal extends BaseSignal<GridSignalConfigs> {
       }
     }
 
-    if (gridType === 'neutral') return true
+    if (gridType === 'neutral') return
 
     const balance = await market.balance()
-
+    const pace = (priceUpperCap - priceLowerCap) / gridCount
     if (gridType === 'long') {
-      const expectedPosition = ((priceUpperCap - currentPrice) / gridCount) * orderSize
+      const expectedPosition = ((priceUpperCap - currentPrice) / pace) * orderSize
+      this.logger.debug(`expected position: ${expectedPosition}`)
       if (balance.base < expectedPosition) {
-        await market.placeOrder({
-          price: currentPrice * 0.025,
+        const order = {
+          price: currentPrice * (1 + 0.025),
           size: expectedPosition - balance.base,
           side: OrderSide.Buy,
           type: OrderType.IOC,
-        })
+        }
+        this.logger.debug(`init position order: ${order.price} ${order.size} ${order.side} ${order.type}`)
+        await market.placeOrder(order)
       }
     } else {
-      const expectedPosition = ((priceLowerCap - currentPrice) / gridCount) * orderSize
+      const expectedPosition = ((priceLowerCap - currentPrice) / pace) * orderSize
       if (balance.base > expectedPosition) {
-        await market.placeOrder({
-          price: currentPrice * 0.025,
+        const order = {
+          price: currentPrice * (1 - 0.025),
           size: balance.base - expectedPosition,
           side: OrderSide.Sell,
           type: OrderType.IOC,
-        })
+        }
+        this.logger.debug(`init position order: ${order.price} ${order.size} ${order.side} ${order.type}`)
+        await market.placeOrder(order)
       }
     }
-
-    return true
   }
 
   async tick() {
