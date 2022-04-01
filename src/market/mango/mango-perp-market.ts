@@ -540,7 +540,7 @@ export class MangoPerpMarket implements Market {
     const bb = await this.bestBid()
     const ba = await this.bestAsk()
     if (!bb || !ba) {
-      this.logger.error('close all position failed', 'no best bid or ask')
+      this.logger.error('get price failed', 'no best bid or ask')
       return undefined
     }
     const referencePrice = (bb.price + ba.price) / 2
