@@ -40,7 +40,7 @@ export interface MangoPerpMarketConfigs {
 }
 
 export class MangoPerpMarket implements Market {
-  private owner: Account
+  private payer: Keypair
 
   private connection: Connection
   private mangoAccount: MangoAccount
@@ -71,9 +71,9 @@ export class MangoPerpMarket implements Market {
     { ttl: 1000 },
   )
 
-  constructor(configs: MangoPerpMarketConfigs, private logger: Logger) {
+  constructor(private configs: MangoPerpMarketConfigs, private logger: Logger) {
     this.logger = logger.create('market')
-    this.owner = new Account(configs.keypair.secretKey)
+    this.payer = configs.keypair
     this.connection = configs.connection
     this.mangoAccount = configs.mangoAccount
     this.mangoClient = configs.mangoClient
@@ -175,7 +175,7 @@ export class MangoPerpMarket implements Market {
           this.mangoAccount,
           this.mangoGroup.mangoCache,
           this.perpMarket,
-          this.owner,
+          this.payer,
           order.side === OrderSide.Buy ? 'buy' : 'sell',
           order.price,
           order.size,
@@ -193,6 +193,8 @@ export class MangoPerpMarket implements Market {
         throw error
       }
     })
+
+    if (!txHash) throw new Error('place order fail')
 
     const receipt = this.receiptStore.add({ order, txHash, status: ReceiptStatus.PlacePending }, clientOrderId)
 
@@ -236,7 +238,7 @@ export class MangoPerpMarket implements Market {
         return await this.mangoClient.cancelPerpOrder(
           this.mangoGroup,
           this.mangoAccount,
-          this.owner,
+          this.payer,
           this.perpMarket,
           // cancel instruction needs only orderId
           // mock perp order to prevent loading perp order
@@ -254,6 +256,8 @@ export class MangoPerpMarket implements Market {
         throw error
       }
     })
+
+    if (!txHash) throw new Error('cancel order fail')
 
     const cancelReceipt = this.receiptStore.add({ ...placedReceipt, status: ReceiptStatus.CancelPending, txHash })
 
@@ -287,12 +291,13 @@ export class MangoPerpMarket implements Market {
     const receipts: Receipt[] = []
 
     while (orders.length > 0) {
-      const txs = await this.mangoClient.cancelAllPerpOrders(
-        this.mangoGroup,
-        [this.perpMarket],
-        this.mangoAccount,
-        this.owner,
-      )
+      const txs =
+        (await this.mangoClient.cancelAllPerpOrders(
+          this.mangoGroup,
+          [this.perpMarket],
+          this.mangoAccount,
+          this.payer,
+        )) || []
 
       await Promise.all(txs.map(tx => this.connection.confirmTransaction(tx, 'confirmed')))
 
@@ -442,9 +447,11 @@ export class MangoPerpMarket implements Market {
       this.perpMarket,
       rootBankAccount,
       this.mangoCache.priceCache[marketIndex].price,
-      this.owner,
+      this.payer,
       undefined,
     )
+
+    if (!txid) throw new Error('settle pnl fail')
 
     return txid
   }
@@ -466,21 +473,25 @@ export class MangoPerpMarket implements Market {
     }
     const referencePrice = (bb.price + ba.price) / 2
 
-    const txHash = await this.mangoClient.placePerpOrder(
-      this.mangoGroup,
-      this.mangoAccount,
-      this.mangoGroup.mangoCache,
-      this.perpMarket,
-      this.owner,
-      side,
-      referencePrice * (1 + (side === 'buy' ? 1 : -1) * maxSlippage),
-      size,
-      'ioc',
-      0, // client order id
-      undefined,
-      true, // reduce only
-      undefined,
+    const txHash = await retry(() =>
+      this.mangoClient.placePerpOrder(
+        this.mangoGroup,
+        this.mangoAccount,
+        this.mangoGroup.mangoCache,
+        this.perpMarket,
+        this.payer,
+        side,
+        referencePrice * (1 + (side === 'buy' ? 1 : -1) * maxSlippage),
+        size,
+        'ioc',
+        0, // client order id
+        undefined,
+        true, // reduce only
+        undefined,
+      ),
     )
+
+    if (!txHash) throw new Error('close all position fail')
 
     try {
       await retry(() => this.connection.confirmTransaction(txHash, 'confirmed'), {
