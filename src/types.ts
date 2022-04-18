@@ -113,7 +113,20 @@ export interface Balance {
   quote: number
 }
 
+export type MarketEventMap = {
+  error: { error: unknown; details: string[] }
+}
+
+export type MarketEvent = keyof MarketEventMap
+
+export type MarketEventPayload<E extends MarketEvent> = MarketEventMap[E]
+
+export type MarketEventListener<E extends MarketEvent> = (payload: MarketEventPayload<E>) => void
+
 export interface Market extends LifeCycle {
+  on<E extends MarketEvent>(event: E, listener: MarketEventListener<E>): void
+  off<E extends MarketEvent>(event: E, listener: MarketEventListener<E>): void
+  once<E extends MarketEvent>(event: E, listener: MarketEventListener<E>): void
   balance(): Promise<Balance>
   bestAsk(): Promise<Order | undefined>
   bestBid(): Promise<Order | undefined>

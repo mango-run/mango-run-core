@@ -1,3 +1,6 @@
+import BN from 'bn.js'
+import { EventEmitter } from 'events'
+
 import {
   MangoAccount,
   MangoCache,
@@ -9,13 +12,13 @@ import {
   QUOTE_INDEX,
   TimeoutError,
 } from '@blockworks-foundation/mango-client'
-import BN from 'bn.js'
-import { Account, Connection, Keypair } from '@solana/web3.js'
+import { Connection, Keypair } from '@solana/web3.js'
 
 import {
   Balance,
   Logger,
   Market,
+  MarketEventListener,
   Order,
   Orderbook,
   OrderDraft,
@@ -40,6 +43,8 @@ export interface MangoPerpMarketConfigs {
 }
 
 export class MangoPerpMarket implements Market {
+  eventEmitter = new EventEmitter()
+
   private payer: Keypair
 
   private connection: Connection
@@ -62,7 +67,7 @@ export class MangoPerpMarket implements Market {
       const publicKey = this.mangoAccount.publicKey
 
       const events = await retry(() => this.perpMarket.loadFills(this.connection)).catch(error => {
-        this.logger.error('update fill events failed', error)
+        this.handleError({ error, silient: true }, 'update fill events failed')
         return []
       })
 
@@ -71,7 +76,7 @@ export class MangoPerpMarket implements Market {
     { ttl: 1000 },
   )
 
-  constructor(private configs: MangoPerpMarketConfigs, private logger: Logger) {
+  constructor(configs: MangoPerpMarketConfigs, private logger: Logger) {
     this.logger = logger.create('market')
     this.payer = configs.keypair
     this.connection = configs.connection
@@ -334,7 +339,7 @@ export class MangoPerpMarket implements Market {
         retryDelay: attempt => attempt * 100,
       })
     } catch (error) {
-      this.logger.error('fail to confirm tx', JSON.stringify(receipt), error)
+      this.handleError({ error }, 'fail to confirm tx', JSON.stringify(receipt))
       return false
     }
 
@@ -351,7 +356,7 @@ export class MangoPerpMarket implements Market {
         return tx.meta.logMessages.join(',')
       },
       { maxAttempt: 10, retryDelay: attempt => Math.pow(2, attempt) * 100 },
-    ).catch(error => this.logger.error('get tx log failed', JSON.stringify(receipt), error))
+    ).catch(error => this.handleError({ error }, 'get tx log failed', JSON.stringify(receipt)))
 
     if (!log) {
       this.logger.debug('failed to fetch transaction log')
@@ -386,7 +391,7 @@ export class MangoPerpMarket implements Market {
         retryDelay: attempt => attempt * 100,
       })
     } catch (error) {
-      this.logger.error('fail to confirm tx', JSON.stringify(receipt), error)
+      this.handleError({ error }, 'fail to confirm tx', JSON.stringify(receipt))
       return false
     }
     this.receiptStore.onCanceled(receipt.id)
@@ -468,7 +473,7 @@ export class MangoPerpMarket implements Market {
     const bb = await this.bestBid()
     const ba = await this.bestAsk()
     if (!bb || !ba) {
-      this.logger.error('close all position failed', 'no best bid or ask')
+      this.handleError({ error: new Error('no best bid or ask') }, 'close all position failed')
       return false
     }
     const referencePrice = (bb.price + ba.price) / 2
@@ -491,7 +496,11 @@ export class MangoPerpMarket implements Market {
       ),
     )
 
-    if (!txHash) throw new Error('close all position fail')
+    if (!txHash) {
+      const error = new Error('no txHash')
+      this.handleError({ error }, 'close all position fail')
+      throw error
+    }
 
     try {
       await retry(() => this.connection.confirmTransaction(txHash, 'confirmed'), {
@@ -499,7 +508,7 @@ export class MangoPerpMarket implements Market {
         retryDelay: attempt => attempt * 100,
       })
     } catch (error) {
-      this.logger.error('close all position failed', error)
+      this.handleError({ error }, 'close all position failed')
       return false
     }
 
@@ -562,5 +571,25 @@ export class MangoPerpMarket implements Market {
     const asset = await this.mangoAccount.getAssetsVal(this.mangoGroup, this.mangoCache)
     const liabilities = await this.mangoAccount.getLiabsVal(this.mangoGroup, this.mangoCache)
     return asset.toNumber() - liabilities.toNumber()
+  }
+
+  handleError({ error, silient }: { error: unknown; silient?: boolean }, ...details: string[]) {
+    this.logger.error(error, ...details)
+
+    if (silient) return
+
+    this.eventEmitter.emit('error', { error, details })
+  }
+
+  on<E extends 'error'>(event: E, listener: MarketEventListener<E>): void {
+    this.eventEmitter.on(event, listener)
+  }
+
+  off<E extends 'error'>(event: E, listener: MarketEventListener<E>): void {
+    this.eventEmitter.off(event, listener)
+  }
+
+  once<E extends 'error'>(event: E, listener: MarketEventListener<E>): void {
+    this.eventEmitter.once(event, listener)
   }
 }
