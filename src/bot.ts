@@ -8,11 +8,7 @@ export interface CallbackWithDetail {
 }
 
 export type BotEventMap = {
-  starting: void
-  started: void
-  running: void
-  stopping: void
-  stopped: void
+  status: string
 }
 
 export type BotEvent = keyof BotEventMap
@@ -49,7 +45,7 @@ export class Bot {
   }
 
   blockSignal(callback: Callback, name = 'unknown') {
-    this.eventEmitter.emit('running', void 0)
+    this.eventEmitter.emit('status', 'running | blockSignal')
     this.blockCallbacks.push({ callback, name })
 
     if (this.signal.isPaused) return
@@ -66,7 +62,7 @@ export class Bot {
   }
 
   async resolveBlockSignalCallbacks() {
-    this.eventEmitter.emit('running', void 0)
+    this.eventEmitter.emit('status', 'running | resolveBlockSignalCallbacks')
     this.logger.debug('start to resolve block signal callbacks')
 
     const callbacks = [...this.blockCallbacks]
@@ -93,7 +89,7 @@ export class Bot {
   }
 
   async start() {
-    this.eventEmitter.emit('starting', void 0)
+    this.eventEmitter.emit('status', 'starting | wait for market and signal to init')
     await Promise.all([
       measureTime(() => doInitialize(this.market)).then(dt => this.logger.info('market initialized', `take ${dt}s`)),
       measureTime(() => doInitialize(this.signal)).then(dt => this.logger.info('signal initialized', `take ${dt}s`)),
@@ -104,12 +100,14 @@ export class Bot {
     this.signal.on('cancel_order_event', this.cancelOrderHandler)
     this.signal.on('cancel_all_orders_event', this.cancelAllOrdersHandler)
     this.signal.on('clear_all_position', this.clearAllPositionHandler)
+
+    this.eventEmitter.emit('status', 'starting | wait for signal to start')
     await this.signal.start()
-    this.eventEmitter.emit('started', void 0)
+    this.eventEmitter.emit('status', 'started')
   }
 
   async stop() {
-    this.eventEmitter.emit('stopping', void 0)
+    this.eventEmitter.emit('status', 'stopping | wait for signal to stop')
     await this.signal.stop()
     this.signal.off('place_order_event', this.placeOrderHandler)
     this.signal.off('cancel_order_event', this.cancelOrderHandler)
@@ -117,11 +115,12 @@ export class Bot {
     this.signal.off('clear_all_position', this.clearAllPositionHandler)
     // @todo it should be optional
     // await measureTime(() => this.clearAllPosition()).then(dt => this.logger.info('clear all position', `take ${dt}s`))
+    this.eventEmitter.emit('status', 'stopping | wait for market and signal to destroy')
     await Promise.all([
       measureTime(() => doDestroy(this.market)).then(dt => this.logger.info('market destroyed', `take ${dt}s`)),
       measureTime(() => doDestroy(this.signal)).then(dt => this.logger.info('signal destroyed', `take ${dt}s`)),
     ])
-    this.eventEmitter.emit('stopped', void 0)
+    this.eventEmitter.emit('status', 'stopped')
   }
 
   on<E extends BotEvent>(event: E, listener: BotEventListener<E>): void {
