@@ -14,7 +14,7 @@
     "test": "jest",
     "build": "rollup --config rollup.config.js",
     "build:docs": "typedoc src/index.ts",
-    "deploy": "yarn build && cd ./dist && yarn publish --ignore-scripts",
+    "deploy": "yarn build && cd ./dist && yarn publish --ignore-scripts --non-interactive",
     "deploy:docs": "yarn build:docs && gh-pages -d docs"
   },
   "dependencies": {
