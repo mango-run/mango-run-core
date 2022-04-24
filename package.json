@@ -1,6 +1,6 @@
 {
   "name": "@mango-run/core",
-  "version": "0.0.22",
+  "version": "0.0.23",
   "repository": "git@github.com:mango-run/mango-run-core.git",
   "author": "yujuiting <yujuiting@me.com>",
   "license": "MIT",
@@ -14,7 +14,7 @@
     "test": "jest",
     "build": "rollup --config rollup.config.js",
     "build:docs": "typedoc src/index.ts",
-    "deploy": "yarn build && cd ./dist && yarn publish --ignore-scripts --non-interactive",
+    "deploy": "yarn build && cd ./dist && yarn publish --ignore-scripts",
     "deploy:docs": "yarn build:docs && gh-pages -d docs"
   },
   "dependencies": {
