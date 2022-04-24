@@ -1,4 +1,5 @@
-import { Signal, Market, SignalEventListener, OrderType, OrderSide, Logger, Callback } from './types'
+import { EventEmitter } from 'events'
+import { Signal, Market, SignalEventListener, Logger, Callback } from './types'
 import { doDestroy, doInitialize, measureTime } from './utils'
 
 export interface CallbackWithDetail {
@@ -6,7 +7,23 @@ export interface CallbackWithDetail {
   callback: Callback
 }
 
+export type BotEventMap = {
+  starting: void
+  started: void
+  running: void
+  stopping: void
+  stopped: void
+}
+
+export type BotEvent = keyof BotEventMap
+
+export type BotEventPayload<E extends BotEvent> = BotEventMap[E]
+
+export type BotEventListener<E extends BotEvent> = (payload: BotEventPayload<E>) => void
+
 export class Bot {
+  eventEmitter = new EventEmitter()
+
   blockCallbacks: CallbackWithDetail[] = []
 
   placeOrderHandler: SignalEventListener<'place_order_event'> = ({ order }) => {
@@ -32,6 +49,7 @@ export class Bot {
   }
 
   blockSignal(callback: Callback, name = 'unknown') {
+    this.eventEmitter.emit('running', void 0)
     this.blockCallbacks.push({ callback, name })
 
     if (this.signal.isPaused) return
@@ -48,6 +66,7 @@ export class Bot {
   }
 
   async resolveBlockSignalCallbacks() {
+    this.eventEmitter.emit('running', void 0)
     this.logger.debug('start to resolve block signal callbacks')
 
     const callbacks = [...this.blockCallbacks]
@@ -74,6 +93,7 @@ export class Bot {
   }
 
   async start() {
+    this.eventEmitter.emit('starting', void 0)
     await Promise.all([
       measureTime(() => doInitialize(this.market)).then(dt => this.logger.info('market initialized', `take ${dt}s`)),
       measureTime(() => doInitialize(this.signal)).then(dt => this.logger.info('signal initialized', `take ${dt}s`)),
@@ -85,9 +105,11 @@ export class Bot {
     this.signal.on('cancel_all_orders_event', this.cancelAllOrdersHandler)
     this.signal.on('clear_all_position', this.clearAllPositionHandler)
     await this.signal.start()
+    this.eventEmitter.emit('started', void 0)
   }
 
   async stop() {
+    this.eventEmitter.emit('stopping', void 0)
     await this.signal.stop()
     this.signal.off('place_order_event', this.placeOrderHandler)
     this.signal.off('cancel_order_event', this.cancelOrderHandler)
@@ -99,5 +121,22 @@ export class Bot {
       measureTime(() => doDestroy(this.market)).then(dt => this.logger.info('market destroyed', `take ${dt}s`)),
       measureTime(() => doDestroy(this.signal)).then(dt => this.logger.info('signal destroyed', `take ${dt}s`)),
     ])
+    this.eventEmitter.emit('stopped', void 0)
+  }
+
+  on<E extends BotEvent>(event: E, listener: BotEventListener<E>): void {
+    this.eventEmitter.on(event, listener)
+  }
+
+  off<E extends BotEvent>(event: E, listener: BotEventListener<E>): void {
+    this.eventEmitter.off(event, listener)
+  }
+
+  once<E extends BotEvent>(event: E, listener: BotEventListener<E>): void {
+    this.eventEmitter.once(event, listener)
+  }
+
+  emit<E extends BotEvent>(event: E, payload: BotEventListener<E>) {
+    this.eventEmitter.emit(event, payload)
   }
 }
