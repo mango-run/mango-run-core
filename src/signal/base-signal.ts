@@ -56,7 +56,6 @@ export abstract class BaseSignal<Config extends BaseSignalConfigs = BaseSignalCo
     if (!this.isRunning) return false
     this.isRunning = false
     this.emit('stop', void 0)
-    await new Promise<void>(resolve => this.once('stop', resolve))
     return true
   }
 

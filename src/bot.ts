@@ -109,13 +109,17 @@ export class Bot {
 
   async stop() {
     this.status = { status: 'stopping', message: 'wait for wait for signal to stop' }
-    await this.signal.stop()
     this.signal.off('place_order_event', this.placeOrderHandler)
     this.signal.off('cancel_order_event', this.cancelOrderHandler)
     this.signal.off('cancel_all_orders_event', this.cancelAllOrdersHandler)
     this.signal.off('clear_all_position', this.clearAllPositionHandler)
-    // @todo it should be optional
-    // await measureTime(() => this.clearAllPosition()).then(dt => this.logger.info('clear all position', `take ${dt}s`))
+    await this.signal.stop()
+    await Promise.all([
+      measureTime(() => this.market.cancelAllOrders()).then(dt => this.logger.info('cancel all orders', `take ${dt}s`)),
+      measureTime(() => this.market.closeAllPosition()).then(dt =>
+        this.logger.info('close all position', `take ${dt}s`),
+      ),
+    ])
     this.status = { status: 'stopping', message: 'wait for market and signal to destroy' }
     await Promise.all([
       measureTime(() => doDestroy(this.market)).then(dt => this.logger.info('market destroyed', `take ${dt}s`)),
